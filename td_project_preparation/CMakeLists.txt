@@ -1,24 +1,24 @@
 cmake_minimum_required(VERSION 3.16)
-project(orbital LANGUAGES CXX)
+project(orbital LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if (MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-    set(SDL_FORCE_STATIC_VCRT ON CACHE BOOL "" FORCE)
 endif()
 
 include(FetchContent)
 
-set(SDL_SHARED OFF CACHE BOOL "" FORCE)
-set(SDL_STATIC ON CACHE BOOL "" FORCE)
-set(SDL_TEST OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
-    SDL2
-    GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-    GIT_TAG release-2.30.5
+    glfw
+    GIT_REPOSITORY https://github.com/glfw/glfw.git
+    GIT_TAG 3.4
 )
 
 FetchContent_Declare(
@@ -28,7 +28,7 @@ FetchContent_Declare(
     SOURCE_SUBDIR cmake
 )
 
-FetchContent_MakeAvailable(SDL2 glad)
+FetchContent_MakeAvailable(glfw glad)
 
 glad_add_library(glad_gl_core_33 STATIC API gl:core=3.3)
 
@@ -40,15 +40,10 @@ add_executable(orbital
 
 target_include_directories(orbital PRIVATE src)
 target_link_libraries(orbital PRIVATE
-    SDL2-static
-    SDL2main
+    glfw
     glad_gl_core_33
     OpenGL::GL
 )
-
-if (WIN32)
-    set_target_properties(orbital PROPERTIES WIN32_EXECUTABLE FALSE)
-endif()
 
 add_custom_command(TARGET orbital POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
