@@ -120,12 +120,6 @@ inline Mat4 mat4_perspective(float fovy, float aspect, float zn, float zf) {
     return r;
 }
 
-inline void mat4_to_mat3_pad(const Mat4& a, float out[12]) {
-    out[0]=a.m[0]; out[1]=a.m[1]; out[2]=a.m[2];  out[3]=0;
-    out[4]=a.m[4]; out[5]=a.m[5]; out[6]=a.m[6];  out[7]=0;
-    out[8]=a.m[8]; out[9]=a.m[9]; out[10]=a.m[10];out[11]=0;
-}
-
 inline Mat4 mat4_normal_matrix(const Mat4& w) {
 
     float a = w.m[0], b = w.m[4], c = w.m[8];

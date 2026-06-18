@@ -6,12 +6,9 @@
 #include <map>
 
 namespace {
-// Sommet "OpenGL" : position + normale + coordonnees de texture
 struct V { float px, py, pz, nx, ny, nz, u, v; };
 
-// Cle d'un sommet OBJ = triplet d'indices (position / normale / texcoord).
-// Le format OBJ utilise 3 tableaux d'indices distincts ; OpenGL n'en gere qu'un.
-// On recree donc des sommets uniques et on les deduplique grace a cette cle (cf. annexe A).
+// cle pour fusionner les sommets identiques (position / normale / uv)
 struct Key {
     int v, n, t;
     bool operator<(const Key& o) const {
@@ -25,7 +22,7 @@ struct Key {
 bool Mesh::load(const std::string& objPath, const std::string& assetDir) {
     tinyobj::ObjReaderConfig config;
     config.mtl_search_path = assetDir;
-    config.triangulate = true; // on force la triangularisation (cf. annexe A)
+    config.triangulate = true;   // on force les triangles
 
     tinyobj::ObjReader reader;
     if (!reader.ParseFromFile(objPath, config)) {
@@ -40,7 +37,7 @@ bool Mesh::load(const std::string& objPath, const std::string& assetDir) {
     const std::vector<tinyobj::shape_t>&    shapes  = reader.GetShapes();
     const std::vector<tinyobj::material_t>& objMats = reader.GetMaterials();
 
-    // --- Lecture des materiaux du fichier MTL (Ka, Kd, Ks, Ns, map_Kd) ---
+    // materiaux (Ka, Kd, Ks, Ns, texture diffuse)
     std::map<std::string, GLuint> texCache;
     auto loadTex = [&](const std::string& file) -> GLuint {
         if (file.empty()) return 0;
@@ -65,12 +62,13 @@ bool Mesh::load(const std::string& objPath, const std::string& assetDir) {
         materials_.push_back(mat);
     }
     const int defaultMat = (int)materials_.size();
-    materials_.push_back(Material{}); // materiau par defaut si une face n'en a pas
+    materials_.push_back(Material{});   // materiau par defaut
 
-    // --- Construction des sommets uniques et des indices, groupes par materiau ---
-    std::vector<V>      vertices;                  // tableau de sommets (-> VBO)
-    std::map<int, std::vector<GLuint>> indicesByMat; // indices, regroupes par materiau
-    std::map<Key, GLuint> uniqueVerts;             // deduplication des sommets
+    // OBJ a 3 tableaux d'indices, OpenGL n'en gere qu'un :
+    // on recree des sommets uniques et on construit un seul tableau d'indices.
+    std::vector<V>      vertices;
+    std::map<int, std::vector<GLuint>> indicesByMat;
+    std::map<Key, GLuint> uniqueVerts;
 
     for (const tinyobj::shape_t& shape : shapes) {
         const tinyobj::mesh_t& mesh = shape.mesh;
@@ -87,7 +85,7 @@ bool Mesh::load(const std::string& objPath, const std::string& assetDir) {
                 GLuint vertexIndex;
                 auto it = uniqueVerts.find(key);
                 if (it != uniqueVerts.end()) {
-                    vertexIndex = it->second; // sommet deja cree : on le reutilise
+                    vertexIndex = it->second;   // sommet deja cree
                 } else {
                     V vert{};
                     vert.px = attrib.vertices[3 * idx.vertex_index + 0];
@@ -112,7 +110,7 @@ bool Mesh::load(const std::string& objPath, const std::string& assetDir) {
         }
     }
 
-    // Concatenation des indices de chaque materiau dans un seul tableau (-> IBO)
+    // on regroupe les indices par materiau dans un seul tableau
     std::vector<GLuint> indices;
     for (auto& kv : indicesByMat) {
         SubMesh s;
@@ -123,7 +121,7 @@ bool Mesh::load(const std::string& objPath, const std::string& assetDir) {
         indices.insert(indices.end(), kv.second.begin(), kv.second.end());
     }
 
-    // --- Envoi vers le GPU : VAO + VBO (sommets) + IBO (indices) ---
+    // envoi au GPU : VAO + VBO + IBO
     glGenVertexArrays(1, &vao_);
     glGenBuffers(1, &vbo_);
     glGenBuffers(1, &ibo_);
@@ -132,8 +130,7 @@ bool Mesh::load(const std::string& objPath, const std::string& assetDir) {
     glBindBuffer(GL_ARRAY_BUFFER, vbo_);
     glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(V), vertices.data(), GL_STATIC_DRAW);
 
-    // L'IBO doit etre lie pendant que le VAO est actif (il fait partie de l'etat du VAO)
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_);   // l'IBO est stocke dans le VAO
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(GLuint),
                  indices.data(), GL_STATIC_DRAW);
 
@@ -142,12 +139,12 @@ bool Mesh::load(const std::string& objPath, const std::string& assetDir) {
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(3*sizeof(float)));  // normale
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(6*sizeof(float)));  // coord. texture
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(6*sizeof(float)));  // uv
     glEnableVertexAttribArray(2);
 
     glBindVertexArray(0);
-    std::printf("[obj] %s : %zu sommets, %zu indices, %zu sous-maillages\n",
-                objPath.c_str(), vertices.size(), indices.size(), subs_.size());
+    std::printf("[obj] %s : %zu sommets, %zu indices\n",
+                objPath.c_str(), vertices.size(), indices.size());
     return true;
 }
 
@@ -160,14 +157,14 @@ void Mesh::setup_instancing(const std::vector<float>& instanceData, GLsizei stri
 
     const GLsizei stride = strideFloats * (GLsizei)sizeof(float);
 
-    // Une mat4 occupe 4 emplacements d'attribut consecutifs (locations 3,4,5,6)
+    // une mat4 = 4 attributs (locations 3 a 6), un par instance
     for (int i = 0; i < 4; ++i) {
         glEnableVertexAttribArray(3 + i);
         glVertexAttribPointer(3 + i, 4, GL_FLOAT, GL_FALSE, stride,
                               (void*)(size_t)(i * 4 * sizeof(float)));
-        glVertexAttribDivisor(3 + i, 1); // une valeur par instance (3.b)
+        glVertexAttribDivisor(3 + i, 1);
     }
-    // Couleur de l'instance (location 7)
+    // couleur de l'instance (location 7)
     glEnableVertexAttribArray(7);
     glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, stride, (void*)(size_t)(16 * sizeof(float)));
     glVertexAttribDivisor(7, 1);

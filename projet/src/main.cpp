@@ -18,14 +18,13 @@
 
 namespace fs = std::filesystem;
 
-// UBO partage par tous les shaders : matrices vue/projection + position camera.
-// (Partie 2.b : on transfere les matrices via un Uniform Buffer Object.)
+// UBO partage : matrices vue/projection + position camera
 struct CameraUBO {
     float view[16];
     float proj[16];
-    float camPos[4];   // .xyz = position de la camera
+    float camPos[4];
 };
-// UBO propre a chaque objet : matrice monde + normal matrix.
+// UBO par objet : matrice monde + normal matrix
 struct ObjectUBO {
     float model[16];
     float normalMat[16];
@@ -99,7 +98,7 @@ static void on_key(GLFWwindow* w, int key, int sc, int action, int mods) {
     if (key == GLFW_KEY_P)      a->saveShot = true;
 }
 
-// Sommets du cube de la skybox (36 sommets, 12 triangles)
+// cube de la skybox
 static const float SKYBOX_VERTS[] = {
     -1,-1,-1,  -1,-1, 1,  -1, 1, 1,  -1, 1, 1,  -1, 1,-1,  -1,-1,-1,
      1,-1,-1,   1, 1,-1,   1, 1, 1,   1, 1, 1,   1,-1, 1,   1,-1,-1,
@@ -109,9 +108,8 @@ static const float SKYBOX_VERTS[] = {
     -1,-1,-1,   1,-1,-1,   1,-1, 1,   1,-1, 1,  -1,-1, 1,  -1,-1,-1,
 };
 
-// Quad plein ecran : 2 triangles (6 sommets), chaque sommet = position NDC + UV
+// quad plein ecran : position + uv
 static const float QUAD_VERTS[] = {
-    // position    // uv
     -1.0f, -1.0f,  0.0f, 0.0f,
      1.0f, -1.0f,  1.0f, 0.0f,
      1.0f,  1.0f,  1.0f, 1.0f,
@@ -127,7 +125,6 @@ int main(int argc, char** argv) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
-    glfwWindowHint(GLFW_SAMPLES, 4);
 
     bool screenshotMode = false;
     for (int i = 1; i < argc; ++i)
@@ -153,7 +150,6 @@ int main(int argc, char** argv) {
     glfwGetFramebufferSize(win, &app.W, &app.H);
 
     glEnable(GL_DEPTH_TEST);
-    glEnable(GL_MULTISAMPLE);
     glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 
     fs::path exeDir   = fs::path(argv[0]).parent_path();
@@ -167,7 +163,7 @@ int main(int argc, char** argv) {
     GLuint progInstanced = glu::program_vf(sp("instanced.vert"), sp("instanced.frag"));
     GLuint progProcedural = glu::program_vf(sp("post.vert"), sp("procedural.frag"));
 
-    // On associe chaque bloc UBO a un point de binding (compatible OpenGL 4.1)
+    // association des blocs UBO aux points de binding
     auto bindBlock = [](GLuint prog, const char* name, GLuint binding) {
         GLuint idx = glGetUniformBlockIndex(prog, name);
         if (idx != GL_INVALID_INDEX) glUniformBlockBinding(prog, idx, binding);
@@ -177,7 +173,7 @@ int main(int argc, char** argv) {
     bindBlock(progSkybox,    "Camera", 0);
     bindBlock(progInstanced, "Camera", 0);
 
-    // Unites de texture fixes : 0 = texture diffuse, 1 = cubemap d'environnement
+    // unites de texture : 0 = diffuse, 1 = cubemap
     glUseProgram(progPhong);
     glUniform1i(glGetUniformLocation(progPhong, "uDiffuseTex"), 0);
     glUniform1i(glGetUniformLocation(progPhong, "uEnvMap"),     1);
@@ -188,7 +184,7 @@ int main(int argc, char** argv) {
     glUseProgram(progPost);
     glUniform1i(glGetUniformLocation(progPost, "uScene"), 0);
 
-    // Petites fonctions utilitaires pour transmettre les uniforms (par nom, comme en TD)
+    // petits helpers pour transmettre les uniforms
     auto setBool  = [](GLuint p, const char* n, bool v)  { glUniform1i(glGetUniformLocation(p, n), v ? 1 : 0); };
     auto setFloat = [](GLuint p, const char* n, float v) { glUniform1f(glGetUniformLocation(p, n), v); };
     auto setVec3  = [](GLuint p, const char* n, Vec3 v)  { glUniform3f(glGetUniformLocation(p, n), v.x, v.y, v.z); };
@@ -218,20 +214,20 @@ int main(int argc, char** argv) {
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
-    // VAO/VBO du quad plein ecran (sert au post-traitement et a la texture procedurale)
+    // VAO/VBO du quad (post-traitement et texture procedurale)
     GLuint quadVao, quadVbo;
     glGenVertexArrays(1, &quadVao);
     glGenBuffers(1, &quadVbo);
     glBindVertexArray(quadVao);
     glBindBuffer(GL_ARRAY_BUFFER, quadVbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(QUAD_VERTS), QUAD_VERTS, GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);                 // position
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float))); // uv
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
     glEnableVertexAttribArray(1);
     glBindVertexArray(0);
 
-    // Texture procedurale (3.d) generee par rendu dans un FBO (render-to-texture)
+    // texture procedurale : rendue dans un FBO
     const int PROC = 512;
     GLuint procTex;
     glGenTextures(1, &procTex);
@@ -248,7 +244,7 @@ int main(int argc, char** argv) {
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, procTex, 0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    // Chargement des modeles 3D (1.a)
+    // chargement des modeles
     Mesh mPlane, mSphere, mTorus, mCube, mSphereBlue, mProcSphere, mInstance;
     mPlane.load     ((fs::path(assetDir) / "plane.obj").string(),       assetDir);
     mSphere.load    ((fs::path(assetDir) / "sphere.obj").string(),      assetDir);
@@ -258,7 +254,7 @@ int main(int argc, char** argv) {
     mProcSphere.load((fs::path(assetDir) / "sphere.obj").string(),      assetDir);
     mInstance.load  ((fs::path(assetDir) / "cube.obj").string(),        assetDir);
 
-    // Donnees d'instances (3.b) : pour chaque cube, une matrice monde + une couleur
+    // donnees d'instances : matrice monde + couleur pour chaque cube
     std::vector<float> inst;
     auto pushInstance = [&](Mat4 m, Vec3 c) {
         for (int i = 0; i < 16; ++i) inst.push_back(m.m[i]);
@@ -286,7 +282,7 @@ int main(int argc, char** argv) {
     app.instanceCount = (int)(inst.size() / 20);
     mInstance.setup_instancing(inst, 20);
 
-    // Placement des objets de la scene (2.a : translations / rotations / scales propres)
+    // placement des objets (positions / rotations / echelles propres)
     std::vector<SceneObject> scene = {
         { &mPlane,      { 0.0f,  0.0f,  0.0f }, { 1, 1, 1 }, 0.0f,  0.0f, 0 },
         { &mSphere,     {-2.6f,  1.0f,  0.0f }, { 1, 1, 1 }, 0.5f,  0.0f, 0 },
@@ -302,7 +298,7 @@ int main(int argc, char** argv) {
     ImGui_ImplGlfw_InitForOpenGL(win, true);
     ImGui_ImplOpenGL3_Init("#version 150");
 
-    // FBO HDR : le rendu principal se fait hors ecran (1.d)
+    // FBO pour le rendu hors ecran
     glu::Framebuffer scene_fbo;
     scene_fbo.create(app.W, app.H);
 
@@ -320,7 +316,7 @@ int main(int argc, char** argv) {
 
         scene_fbo.resize(app.W, app.H);
 
-        // --- Passe 1 : generation de la texture procedurale dans son FBO (3.d) ---
+        // 1) texture procedurale dans son FBO
         glBindFramebuffer(GL_FRAMEBUFFER, procFbo);
         glViewport(0, 0, PROC, PROC);
         glDisable(GL_DEPTH_TEST);
@@ -331,13 +327,13 @@ int main(int argc, char** argv) {
         glEnable(GL_DEPTH_TEST);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        // --- Passe 2 : rendu de la scene 3D dans le FBO HDR ---
+        // 2) rendu de la scene dans le FBO
         glBindFramebuffer(GL_FRAMEBUFFER, scene_fbo.fbo);
         glViewport(0, 0, app.W, app.H);
         glClearColor(0.02f, 0.02f, 0.03f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // Matrices camera + projection, transmises via l'UBO (2.b)
+        // matrices camera -> UBO
         Vec3 eye = app.cam.position();
         Mat4 view = app.cam.view();
         Mat4 proj = mat4_perspective(60.0f * PI / 180.0f,
@@ -348,8 +344,7 @@ int main(int argc, char** argv) {
         glBindBuffer(GL_UNIFORM_BUFFER, cameraUBO);
         glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(CameraUBO), &cu);
 
-        // Lumieres directionnelles (calculees cote CPU et transmises en uniform).
-        // L = direction VERS la lumiere. La principale tourne lentement (animation).
+        // lumieres directionnelles (L = direction vers la lumiere) ; la principale tourne
         Vec3 keyDir  = vec3_norm(Vec3{ std::cos(t * 0.3f), 0.95f, std::sin(t * 0.3f) });
         Vec3 fillDir = vec3_norm(Vec3{ -0.5f, 0.6f, -0.4f });
 
@@ -378,7 +373,6 @@ int main(int argc, char** argv) {
             glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(ObjectUBO), &ou);
 
             o.mesh->draw([&](const Material& mat) {
-                // Transmission du materiau (Ka, Kd, Ks, Ns) en uniforms nommes
                 Vec3 kd = mat.Kd;
                 GLuint tex; bool hasTex;
                 if (o.overrideTex) {            // sphere texturee par la texture procedurale
@@ -400,7 +394,7 @@ int main(int argc, char** argv) {
             });
         }
 
-        // Anneau de cubes en instancing (3.b)
+        // anneau de cubes (instancing)
         if (app.drawInstances) {
             glUseProgram(progInstanced);
             setVec3(progInstanced, "uLightDir",   keyDir);
@@ -409,7 +403,7 @@ int main(int argc, char** argv) {
             mInstance.draw_instanced(app.instanceCount);
         }
 
-        // Skybox (3.c) : dessinee en dernier avec un test de profondeur <=
+        // skybox dessinee en dernier
         if (app.drawSkybox) {
             glDepthFunc(GL_LEQUAL);
             glUseProgram(progSkybox);
@@ -418,7 +412,7 @@ int main(int argc, char** argv) {
             glDepthFunc(GL_LESS);
         }
 
-        // --- Passe 3 : post-traitement, recopie du FBO vers le backbuffer (1.d / 3.a) ---
+        // 3) post-traitement : FBO -> ecran
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, app.W, app.H);
         glDisable(GL_DEPTH_TEST);
@@ -438,7 +432,7 @@ int main(int argc, char** argv) {
         }
         ++frameCount;
 
-        // Interface ImGui (3.e)
+        // interface ImGui
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
@@ -448,17 +442,17 @@ int main(int argc, char** argv) {
         ImGui::Text("drag: orbit   wheel: zoom   space: pause   R: reset");
         ImGui::SeparatorText("Illumination");
         ImGui::Checkbox("Blinn-Phong (sinon Phong)", &app.blinn);
-        ImGui::Checkbox("Fresnel de Schlick (3.g)", &app.schlick);
-        ImGui::Checkbox("Ambiante hemispherique (1.c)", &app.hemiAmbient);
-        ImGui::Checkbox("Environment mapping (1.c)", &app.envMap);
-        ImGui::Checkbox("Rim / back-light Fresnel (3.f)", &app.rim);
+        ImGui::Checkbox("Fresnel de Schlick", &app.schlick);
+        ImGui::Checkbox("Ambiante hemispherique", &app.hemiAmbient);
+        ImGui::Checkbox("Environment mapping", &app.envMap);
+        ImGui::Checkbox("Rim / back-light", &app.rim);
         ImGui::SliderFloat("Rim power", &app.rimPower, 0.5f, 8.0f);
         ImGui::SeparatorText("Scene");
-        ImGui::Checkbox("Skybox cubemap (3.c)", &app.drawSkybox);
-        ImGui::Checkbox("Instancing (3.b)", &app.drawInstances);
+        ImGui::Checkbox("Skybox cubemap", &app.drawSkybox);
+        ImGui::Checkbox("Instancing", &app.drawInstances);
         ImGui::Text("instances: %d", app.instanceCount);
         ImGui::Checkbox("Animer", &app.animate);
-        ImGui::SeparatorText("Post-traitement (1.d / 3.a)");
+        ImGui::SeparatorText("Post-traitement");
         ImGui::SliderFloat("Exposure", &app.exposure, 0.1f, 4.0f);
         ImGui::Combo("Effet", &app.postMode, "Aucun\0Niveaux de gris\0Negatif\0Sepia\0");
         ImGui::End();
