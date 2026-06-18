@@ -1,0 +1,396 @@
+#include <glad/gl.h>
+#include <GLFW/glfw3.h>
+
+#include "imgui.h"
+#include "backends/imgui_impl_glfw.h"
+#include "backends/imgui_impl_opengl3.h"
+
+#include <cstdio>
+#include <cstring>
+#include <filesystem>
+#include <string>
+#include <vector>
+
+#include "math3d.h"
+#include "camera.h"
+#include "mesh.h"
+#include "gl_utils.h"
+
+namespace fs = std::filesystem;
+
+struct CameraUBO {
+    float view[16];
+    float proj[16];
+    float camPos[4];
+    float options[4];
+    float options2[4];
+};
+struct ObjectUBO {
+    float model[16];
+    float normalMat[16];
+    float Ka[4];
+    float Kd[4];
+    float Ks[4];
+    float params[4];
+};
+
+struct SceneObject {
+    Mesh*  mesh = nullptr;
+    Vec3   position { 0, 0, 0 };
+    Vec3   scale { 1, 1, 1 };
+    float  spin = 0.0f;
+    float  phase = 0.0f;
+    GLuint overrideTex = 0;
+};
+
+struct App {
+    OrbitCamera cam;
+    bool   dragging = false;
+    double lastX = 0, lastY = 0;
+    int    W = 1280, H = 800;
+
+    bool blinn = true;
+    bool envMap = true;
+    bool hemiAmbient = true;
+    bool rim = true;
+    bool schlick = true;
+    bool drawSkybox = true;
+    bool drawInstances = true;
+    bool animate = true;
+    float exposure = 1.0f;
+    float rimPower = 3.0f;
+    int   postMode = 0;
+    int   instanceCount = 0;
+    bool  saveShot = false;
+};
+
+static void on_resize(GLFWwindow* w, int width, int height) {
+    auto* a = (App*)glfwGetWindowUserPointer(w);
+    a->W = width > 1 ? width : 1;
+    a->H = height > 1 ? height : 1;
+}
+static void on_mouse_button(GLFWwindow* w, int button, int action, int mods) {
+    auto* a = (App*)glfwGetWindowUserPointer(w);
+    if (ImGui::GetIO().WantCaptureMouse) return;
+    if (button == GLFW_MOUSE_BUTTON_LEFT) {
+        if (action == GLFW_PRESS) {
+            a->dragging = true;
+            glfwGetCursorPos(w, &a->lastX, &a->lastY);
+        } else if (action == GLFW_RELEASE) {
+            a->dragging = false;
+        }
+    }
+}
+static void on_cursor_pos(GLFWwindow* w, double x, double y) {
+    auto* a = (App*)glfwGetWindowUserPointer(w);
+    if (!a->dragging) return;
+    double dx = x - a->lastX, dy = y - a->lastY;
+    a->lastX = x; a->lastY = y;
+    a->cam.rotate((float)dx * 0.005f, (float)dy * 0.005f);
+}
+static void on_scroll(GLFWwindow* w, double xoff, double yoff) {
+    auto* a = (App*)glfwGetWindowUserPointer(w);
+    if (ImGui::GetIO().WantCaptureMouse) return;
+    a->cam.zoom((float)yoff * 0.6f);
+}
+static void on_key(GLFWwindow* w, int key, int sc, int action, int mods) {
+    auto* a = (App*)glfwGetWindowUserPointer(w);
+    if (action != GLFW_PRESS) return;
+    if (key == GLFW_KEY_ESCAPE) glfwSetWindowShouldClose(w, GLFW_TRUE);
+    if (key == GLFW_KEY_SPACE)  a->animate = !a->animate;
+    if (key == GLFW_KEY_R)      a->cam = OrbitCamera{};
+    if (key == GLFW_KEY_P)      a->saveShot = true;
+}
+
+static const float SKYBOX_VERTS[] = {
+    -1,-1,-1,  -1,-1, 1,  -1, 1, 1,  -1, 1, 1,  -1, 1,-1,  -1,-1,-1,
+     1,-1,-1,   1, 1,-1,   1, 1, 1,   1, 1, 1,   1,-1, 1,   1,-1,-1,
+    -1,-1,-1,  -1, 1,-1,   1, 1,-1,   1, 1,-1,   1,-1,-1,  -1,-1,-1,
+    -1,-1, 1,   1,-1, 1,   1, 1, 1,   1, 1, 1,  -1, 1, 1,  -1,-1, 1,
+    -1, 1,-1,  -1, 1, 1,   1, 1, 1,   1, 1, 1,   1, 1,-1,  -1, 1,-1,
+    -1,-1,-1,   1,-1,-1,   1,-1, 1,   1,-1, 1,  -1,-1, 1,  -1,-1,-1,
+};
+
+int main(int argc, char** argv) {
+    if (!glfwInit()) { std::fprintf(stderr, "glfwInit failed\n"); return 1; }
+
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+    glfwWindowHint(GLFW_SAMPLES, 4);
+
+    bool screenshotMode = false;
+    for (int i = 1; i < argc; ++i)
+        if (std::string(argv[i]) == "--screenshot") screenshotMode = true;
+
+    App app;
+    GLFWwindow* win = glfwCreateWindow(app.W, app.H, "Projet OpenGL M1 - Scene 3D", nullptr, nullptr);
+    if (!win) { std::fprintf(stderr, "CreateWindow failed (need OpenGL 4.3)\n"); glfwTerminate(); return 1; }
+    glfwSetWindowUserPointer(win, &app);
+    glfwMakeContextCurrent(win);
+    glfwSwapInterval(1);
+
+    glfwSetFramebufferSizeCallback(win, on_resize);
+    glfwSetMouseButtonCallback(win, on_mouse_button);
+    glfwSetCursorPosCallback(win, on_cursor_pos);
+    glfwSetScrollCallback(win, on_scroll);
+    glfwSetKeyCallback(win, on_key);
+
+    if (!gladLoadGL((GLADloadfunc)glfwGetProcAddress)) {
+        std::fprintf(stderr, "gladLoadGL failed\n"); return 1;
+    }
+    std::printf("OpenGL %s\n", glGetString(GL_VERSION));
+    glfwGetFramebufferSize(win, &app.W, &app.H);
+
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_MULTISAMPLE);
+    glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+
+    fs::path exeDir   = fs::path(argv[0]).parent_path();
+    std::string shaderDir = (exeDir / "shaders").string();
+    std::string assetDir  = (exeDir / "assets").string();
+    auto sp = [&](const char* f) { return (fs::path(shaderDir) / f).string(); };
+
+    GLuint progPhong     = glu::program_vf(sp("phong.vert"),     sp("phong.frag"));
+    GLuint progSkybox    = glu::program_vf(sp("skybox.vert"),    sp("skybox.frag"));
+    GLuint progPost      = glu::program_vf(sp("post.vert"),      sp("post.frag"));
+    GLuint progInstanced = glu::program_vf(sp("instanced.vert"), sp("instanced.frag"));
+    GLuint progCompute   = glu::program_compute(sp("procedural.comp"));
+
+    glUseProgram(progPhong);
+    glUniform1i(glGetUniformLocation(progPhong, "uDiffuseTex"), 0);
+    glUniform1i(glGetUniformLocation(progPhong, "uEnvMap"),     1);
+    glUseProgram(progInstanced);
+    glUniform1i(glGetUniformLocation(progInstanced, "uEnvMap"), 1);
+    glUseProgram(progSkybox);
+    glUniform1i(glGetUniformLocation(progSkybox, "uEnvMap"), 1);
+    glUseProgram(progPost);
+    glUniform1i(glGetUniformLocation(progPost, "uScene"), 0);
+
+    GLuint cameraUBO, objectUBO;
+    glGenBuffers(1, &cameraUBO);
+    glBindBuffer(GL_UNIFORM_BUFFER, cameraUBO);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(CameraUBO), nullptr, GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 0, cameraUBO);
+
+    glGenBuffers(1, &objectUBO);
+    glBindBuffer(GL_UNIFORM_BUFFER, objectUBO);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(ObjectUBO), nullptr, GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 1, objectUBO);
+
+    GLuint envCube = glu::make_sky_cubemap(256);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, envCube);
+
+    GLuint skyVao, skyVbo;
+    glGenVertexArrays(1, &skyVao);
+    glGenBuffers(1, &skyVbo);
+    glBindVertexArray(skyVao);
+    glBindBuffer(GL_ARRAY_BUFFER, skyVbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(SKYBOX_VERTS), SKYBOX_VERTS, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    GLuint emptyVao; glGenVertexArrays(1, &emptyVao);
+
+    const int PROC = 512;
+    GLuint procTex;
+    glGenTextures(1, &procTex);
+    glBindTexture(GL_TEXTURE_2D, procTex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, PROC, PROC, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    Mesh mPlane, mSphere, mTorus, mCube, mSphereBlue, mProcSphere, mInstance;
+    mPlane.load     ((fs::path(assetDir) / "plane.obj").string(),       assetDir);
+    mSphere.load    ((fs::path(assetDir) / "sphere.obj").string(),      assetDir);
+    mTorus.load     ((fs::path(assetDir) / "torus.obj").string(),       assetDir);
+    mCube.load      ((fs::path(assetDir) / "cube.obj").string(),        assetDir);
+    mSphereBlue.load((fs::path(assetDir) / "sphere_blue.obj").string(), assetDir);
+    mProcSphere.load((fs::path(assetDir) / "sphere.obj").string(),      assetDir);
+    mInstance.load  ((fs::path(assetDir) / "cube.obj").string(),        assetDir);
+
+    std::vector<float> inst;
+    auto pushInstance = [&](Mat4 m, Vec3 c) {
+        for (int i = 0; i < 16; ++i) inst.push_back(m.m[i]);
+        inst.push_back(c.x); inst.push_back(c.y); inst.push_back(c.z); inst.push_back(1.0f);
+    };
+    {
+        const Vec3 palette[5] = {
+            {0.90f,0.30f,0.30f},{0.30f,0.80f,0.45f},{0.35f,0.55f,0.95f},
+            {0.95f,0.80f,0.30f},{0.75f,0.40f,0.90f} };
+        int idx = 0;
+        for (int ring = 0; ring < 2; ++ring) {
+            float R = 7.0f + ring * 1.6f;
+            int   n = 30 + ring * 6;
+            for (int i = 0; i < n; ++i) {
+                float a = (float)i / n * 2.0f * PI;
+                Vec3 p { R * std::cos(a), 0.35f + ring * 0.5f, R * std::sin(a) };
+                Mat4 m = mat4_mul(mat4_translation(p.x, p.y, p.z),
+                          mat4_mul(mat4_rotY(a),
+                                   mat4_scale(0.28f, 0.28f, 0.28f)));
+                pushInstance(m, palette[idx % 5]);
+                ++idx;
+            }
+        }
+    }
+    app.instanceCount = (int)(inst.size() / 20);
+    mInstance.setup_instancing(inst, 20);
+
+    std::vector<SceneObject> scene = {
+        { &mPlane,      { 0.0f,  0.0f,  0.0f }, { 1, 1, 1 }, 0.0f,  0.0f, 0 },
+        { &mSphere,     {-2.6f,  1.0f,  0.0f }, { 1, 1, 1 }, 0.5f,  0.0f, 0 },
+        { &mTorus,      { 2.6f,  1.3f,  0.0f }, { 1, 1, 1 }, 0.8f,  1.0f, 0 },
+        { &mSphereBlue, { 0.0f,  1.0f,  2.8f }, { 0.9f, 0.9f, 0.9f }, -0.6f, 0.0f, 0 },
+        { &mCube,       { 0.0f,  0.6f, -2.8f }, { 1, 1, 1 }, 0.9f,  0.0f, 0 },
+        { &mProcSphere, { 0.0f,  2.6f,  0.0f }, { 0.8f, 0.8f, 0.8f }, 0.7f, 0.0f, procTex },
+    };
+
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui::StyleColorsDark();
+    ImGui_ImplGlfw_InitForOpenGL(win, true);
+    ImGui_ImplOpenGL3_Init("#version 430");
+
+    glu::Framebuffer scene_fbo;
+    scene_fbo.create(app.W, app.H);
+
+    CameraUBO cu{};
+    ObjectUBO ou{};
+    double last = glfwGetTime();
+    float  t = 0.0f;
+    int    frameCount = 0;
+
+    while (!glfwWindowShouldClose(win)) {
+        glfwPollEvents();
+        double now = glfwGetTime();
+        float dt = (float)(now - last); last = now;
+        if (app.animate) t += dt;
+
+        scene_fbo.resize(app.W, app.H);
+
+        glUseProgram(progCompute);
+        glUniform1f(glGetUniformLocation(progCompute, "uTime"), t);
+        glBindImageTexture(0, procTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA8);
+        glDispatchCompute(PROC / 16, PROC / 16, 1);
+        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, scene_fbo.fbo);
+        glViewport(0, 0, app.W, app.H);
+        glClearColor(0.02f, 0.02f, 0.03f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        Vec3 eye = app.cam.position();
+        Mat4 view = app.cam.view();
+        Mat4 proj = mat4_perspective(60.0f * PI / 180.0f,
+                                     (float)app.W / (float)app.H, 0.1f, 200.0f);
+        std::memcpy(cu.view, view.m, sizeof(view.m));
+        std::memcpy(cu.proj, proj.m, sizeof(proj.m));
+        cu.camPos[0]=eye.x; cu.camPos[1]=eye.y; cu.camPos[2]=eye.z; cu.camPos[3]=1.0f;
+        cu.options[0]=app.blinn?1.f:0.f; cu.options[1]=app.envMap?1.f:0.f;
+        cu.options[2]=app.hemiAmbient?1.f:0.f; cu.options[3]=app.rim?1.f:0.f;
+        cu.options2[0]=t; cu.options2[1]=app.schlick?1.f:0.f;
+        cu.options2[2]=app.exposure; cu.options2[3]=app.rimPower;
+        glBindBuffer(GL_UNIFORM_BUFFER, cameraUBO);
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(CameraUBO), &cu);
+
+        glUseProgram(progPhong);
+        for (const SceneObject& o : scene) {
+            if (!o.mesh) continue;
+            Mat4 model = mat4_mul(mat4_translation(o.position.x, o.position.y, o.position.z),
+                          mat4_mul(mat4_rotY(o.spin * t + o.phase),
+                                   mat4_scale(o.scale.x, o.scale.y, o.scale.z)));
+            Mat4 nrm = mat4_normal_matrix(model);
+            std::memcpy(ou.model, model.m, sizeof(model.m));
+            std::memcpy(ou.normalMat, nrm.m, sizeof(nrm.m));
+
+            o.mesh->draw([&](const Material& mat) {
+                ou.Ka[0]=mat.Ka.x; ou.Ka[1]=mat.Ka.y; ou.Ka[2]=mat.Ka.z; ou.Ka[3]=1;
+                ou.Kd[0]=mat.Kd.x; ou.Kd[1]=mat.Kd.y; ou.Kd[2]=mat.Kd.z; ou.Kd[3]=1;
+                ou.Ks[0]=mat.Ks.x; ou.Ks[1]=mat.Ks.y; ou.Ks[2]=mat.Ks.z; ou.Ks[3]=mat.Ns;
+                GLuint tex; bool hasTex;
+                if (o.overrideTex) { tex = o.overrideTex; hasTex = true;
+                                     ou.Kd[0]=ou.Kd[1]=ou.Kd[2]=1.0f; }
+                else if (mat.hasTexture) { tex = mat.diffuseTex; hasTex = true; }
+                else { tex = 0; hasTex = false; }
+                ou.params[0] = hasTex ? 1.0f : 0.0f;
+                ou.params[1] = mat.metallic;
+                glBindBuffer(GL_UNIFORM_BUFFER, objectUBO);
+                glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(ObjectUBO), &ou);
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, hasTex ? tex : 0);
+            });
+        }
+
+        if (app.drawInstances) {
+            glUseProgram(progInstanced);
+            mInstance.draw_instanced(app.instanceCount);
+        }
+
+        if (app.drawSkybox) {
+            glDepthFunc(GL_LEQUAL);
+            glUseProgram(progSkybox);
+            glBindVertexArray(skyVao);
+            glDrawArrays(GL_TRIANGLES, 0, 36);
+            glDepthFunc(GL_LESS);
+        }
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, app.W, app.H);
+        glDisable(GL_DEPTH_TEST);
+        glUseProgram(progPost);
+        glUniform1f(glGetUniformLocation(progPost, "uExposure"), app.exposure);
+        glUniform1i(glGetUniformLocation(progPost, "uPostMode"), app.postMode);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, scene_fbo.color);
+        glBindVertexArray(emptyVao);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glEnable(GL_DEPTH_TEST);
+
+        if (app.saveShot || (screenshotMode && frameCount == 90)) {
+            glu::save_screenshot("screenshot.png", app.W, app.H);
+            app.saveShot = false;
+            if (screenshotMode) glfwSetWindowShouldClose(win, GLFW_TRUE);
+        }
+        ++frameCount;
+
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+        ImGui::SetNextWindowSize(ImVec2(320, 0), ImGuiCond_FirstUseEver);
+        ImGui::Begin("Projet OpenGL M1");
+        ImGui::Text("%.1f FPS  |  OpenGL 4.3 core", ImGui::GetIO().Framerate);
+        ImGui::Text("drag: orbit   wheel: zoom   space: pause   R: reset");
+        ImGui::SeparatorText("Illumination");
+        ImGui::Checkbox("Blinn-Phong (sinon Phong)", &app.blinn);
+        ImGui::Checkbox("Fresnel de Schlick (3.g)", &app.schlick);
+        ImGui::Checkbox("Ambiante hemispherique (1.c)", &app.hemiAmbient);
+        ImGui::Checkbox("Environment mapping (1.c)", &app.envMap);
+        ImGui::Checkbox("Rim / back-light Fresnel (3.f)", &app.rim);
+        ImGui::SliderFloat("Rim power", &app.rimPower, 0.5f, 8.0f);
+        ImGui::SeparatorText("Scene");
+        ImGui::Checkbox("Skybox cubemap (3.c)", &app.drawSkybox);
+        ImGui::Checkbox("Instancing (3.b)", &app.drawInstances);
+        ImGui::Text("instances: %d", app.instanceCount);
+        ImGui::Checkbox("Animer", &app.animate);
+        ImGui::SeparatorText("Post-traitement (1.d / 3.a)");
+        ImGui::SliderFloat("Exposure", &app.exposure, 0.1f, 4.0f);
+        ImGui::Combo("Effet", &app.postMode, "Aucun\0Niveaux de gris\0Negatif\0Sepia\0");
+        ImGui::End();
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        glfwSwapBuffers(win);
+    }
+
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+    scene_fbo.destroy();
+    glfwDestroyWindow(win);
+    glfwTerminate();
+    return 0;
+}
