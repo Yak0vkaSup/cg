@@ -1,14 +1,8 @@
-// =============================================================
-//  OWNER : Personne C (Pipeline) — orchestration generale.
-//  Boucle de rendu :
-//    1) on dessine la scene DANS le FBO (rendu hors ecran, 1.d)
-//    2) on recopie la texture du FBO a l'ecran via un quad plein ecran
-//       (occasion d'ajouter du post-traitement, 3.a)
-// =============================================================
 #include <glad/gl.h>
 #include <SDL.h>
 #include <cstdio>
 #include <string>
+#include <vector>
 
 #include "Shader.h"
 #include "Mesh.h"
@@ -16,11 +10,13 @@
 #include "CameraUBO.h"
 #include "Framebuffer.h"
 #include "Scene.h"
+#include "Skybox.h"
 
 static int gWidth = 1024, gHeight = 768;
 
-int main(int /*argc*/, char** /*argv*/) {
-    // --- SDL + contexte OpenGL 3.3 core ---
+int main(int argc, char** argv) {
+    (void)argc; (void)argv;
+
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return 1;
@@ -34,12 +30,18 @@ int main(int /*argc*/, char** /*argv*/) {
     SDL_Window* win = SDL_CreateWindow("Scene 3D - Projet OpenGL",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         gWidth, gHeight, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
-    if (!win) { std::fprintf(stderr, "CreateWindow: %s\n", SDL_GetError()); return 1; }
+    if (!win) {
+        std::fprintf(stderr, "CreateWindow: %s\n", SDL_GetError());
+        return 1;
+    }
 
     SDL_GLContext ctx = SDL_GL_CreateContext(win);
-    if (!ctx) { std::fprintf(stderr, "GL context: %s\n", SDL_GetError()); return 1; }
+    if (!ctx) {
+        std::fprintf(stderr, "GL context: %s\n", SDL_GetError());
+        return 1;
+    }
     SDL_GL_MakeCurrent(win, ctx);
-    SDL_GL_SetSwapInterval(1); // vsync
+    SDL_GL_SetSwapInterval(1);
 
     if (!gladLoadGL((GLADloadfunc)SDL_GL_GetProcAddress)) {
         std::fprintf(stderr, "gladLoadGL failed\n");
@@ -49,11 +51,9 @@ int main(int /*argc*/, char** /*argv*/) {
 
     glEnable(GL_DEPTH_TEST);
 
-    // --- Ressources ---
     Shader phong;  phong.load("shaders/phong.vert",  "shaders/phong.frag");
     Shader screen; screen.load("shaders/screen.vert", "shaders/screen.frag");
 
-    // Lie le bloc "Camera" des shaders au point de binding de l'UBO.
     phong.bindUniformBlock("Camera", CameraUBO::BINDING);
 
     CameraUBO cameraUBO; cameraUBO.create();
@@ -63,7 +63,31 @@ int main(int /*argc*/, char** /*argv*/) {
     Camera camera;
     Scene scene; scene.build();
 
-    // --- Etat souris pour la camera orbitale ---
+    Skybox skybox;
+    std::vector<std::string> skyboxFaces = {
+        "../envmaps/sky80/px.png",
+        "../envmaps/sky80/nx.png",
+        "../envmaps/sky80/py.png",
+        "../envmaps/sky80/ny.png",
+        "../envmaps/sky80/pz.png",
+        "../envmaps/sky80/nz.png",
+    };
+    skybox.load(skyboxFaces);
+
+    Shader instancedShader;
+    instancedShader.load("shaders/instanced.vert", "shaders/instanced.frag");
+
+    Mesh instancedCubes = Mesh::makeCube();
+    std::vector<Mat4> instanceMatrices;
+    for (int gx = -4; gx <= 4; ++gx) {
+        for (int gz = -4; gz <= 4; ++gz) {
+            Mat4 translation = mat4_translation((float)gx * 1.5f, 2.5f, (float)gz * 1.5f);
+            Mat4 scaling = mat4_scale(0.2f, 0.2f, 0.2f);
+            instanceMatrices.push_back(mat4_mul(translation, scaling));
+        }
+    }
+    instancedCubes.setInstanceMatrices(instanceMatrices);
+
     bool dragging = false;
     bool running = true;
     SDL_Event e;
@@ -84,23 +108,24 @@ int main(int /*argc*/, char** /*argv*/) {
         }
 
         float aspect = (float)gWidth / (float)gHeight;
-        cameraUBO.update(camera.view(), camera.proj(aspect), camera.position());
+        Mat4 view = camera.view();
+        Mat4 proj = camera.proj(aspect);
+        cameraUBO.update(view, proj, camera.position());
 
-        // ---- PASSE 1 : scene -> FBO (hors ecran) ----
         fbo.bind();
         glEnable(GL_DEPTH_TEST);
         glClearColor(0.08f, 0.09f, 0.11f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         phong.use();
-        // uniforms communs a tous les objets (lumiere + ambiant hemispherique).
-        phong.setVec3("uLightDir",   vec3_norm(scene.light.direction));
-        phong.setVec3("uLightColor", scene.light.color);
+        phong.setVec3("uLightDir",    vec3_norm(scene.light.direction));
+        phong.setVec3("uLightColor",  scene.light.color);
         phong.setVec3("uSkyColor",    scene.ambient.skyColor);
         phong.setVec3("uGroundColor", scene.ambient.groundColor);
-        phong.setInt("uDiffuseTex", 0); // unite de texture 0
+        phong.setInt("uDiffuseTex", 0);
 
-        for (const auto& obj : scene.objects()) {
+        for (size_t k = 0; k < scene.objects().size(); ++k) {
+            const SceneObject& obj = scene.objects()[k];
             phong.setMat4("uWorld", obj.transform);
             phong.setVec3("uKa", obj.material.ambient);
             phong.setVec3("uKd", obj.material.diffuse);
@@ -111,10 +136,17 @@ int main(int /*argc*/, char** /*argv*/) {
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, obj.material.diffuseTex);
             }
-            obj.mesh->draw();
+            obj.mesh.draw();
         }
 
-        // ---- PASSE 2 : FBO -> ecran (+ correction gamma / post-traitement) ----
+        instancedShader.use();
+        instancedShader.setMat4("uView", view);
+        instancedShader.setMat4("uProj", proj);
+        instancedShader.setVec3("uColor", 0.9f, 0.8f, 0.2f);
+        instancedCubes.drawInstanced();
+
+        skybox.draw(view, proj);
+
         Framebuffer::bindDefault(gWidth, gHeight);
         glDisable(GL_DEPTH_TEST);
         glClear(GL_COLOR_BUFFER_BIT);
@@ -127,6 +159,8 @@ int main(int /*argc*/, char** /*argv*/) {
         SDL_GL_SwapWindow(win);
     }
 
+    skybox.destroy();
+    instancedShader.destroy();
     cameraUBO.destroy();
     fbo.destroy();
     SDL_GL_DeleteContext(ctx);

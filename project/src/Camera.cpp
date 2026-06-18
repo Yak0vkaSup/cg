@@ -4,17 +4,16 @@
 static const float PI = 3.14159265358979f;
 
 void Camera::orbit(float dPhi, float dTheta) {
-    phi   += dPhi;
+    phi += dPhi;
     theta += dTheta;
-    // borne l'elevation pour ne pas passer "par-dessus" le pole.
     float lim = PI * 0.5f - 0.01f;
-    if (theta >  lim) theta =  lim;
+    if (theta > lim) theta = lim;
     if (theta < -lim) theta = -lim;
 }
 
 void Camera::zoom(float dRadius) {
     radius += dRadius;
-    if (radius < 1.0f)  radius = 1.0f;
+    if (radius < 1.0f) radius = 1.0f;
     if (radius > 50.0f) radius = 50.0f;
 }
 

@@ -1,10 +1,4 @@
 #pragma once
-// =============================================================
-//  OWNER : Personne C (Pipeline)
-//  FBO de rendu hors ecran (exigence 1.d) : on dessine la scene
-//  dedans (texture couleur + depth), puis on recopie cette texture
-//  a l'ecran via un quad plein ecran (ce qui permet le post-traitement, 3.a).
-// =============================================================
 #include "gl_common.h"
 
 class Framebuffer {
@@ -13,8 +7,8 @@ public:
     void resize(int width, int height);
     void destroy();
 
-    void bind() const;          // dessiner DANS le FBO
-    static void bindDefault(int width, int height); // revenir a l'ecran
+    void bind() const;
+    static void bindDefault(int width, int height);
 
     GLuint colorTexture() const { return colorTex_; }
 

@@ -1,68 +1,56 @@
 #include "Scene.h"
-#include "Texture.h"
-
-const Mesh* Scene::keep(Mesh&& m) {
-    meshes_.push_back(std::make_unique<Mesh>(std::move(m)));
-    return meshes_.back().get();
-}
 
 void Scene::build() {
-    // Meshes de base reutilisables.
-    const Mesh* cube   = keep(Mesh::makeCube());
-    const Mesh* sphere = keep(Mesh::makeSphere());
-
-    // =========================================================
-    //  SECTION PERSONNE A  (objets geometrie / OBJ / textures)
-    // =========================================================
+    // Personne A
     {
-        // Exemple : un cube texture (decommentez et fournissez l'image).
-        // Material m;
-        // m.diffuseTex = Texture::loadFromFile("assets/box.png", true);
-        // m.hasDiffuseTex = (m.diffuseTex != 0);
-        // objects_.push_back({ cube, m, mat4_translation(-2,0,0) });
-
-        // Exemple : charger un .obj
-        // auto model = std::make_unique<Model>();
-        // if (model->load("assets/mon_objet.obj")) {
-        //     Mat4 T = mat4_translation(0, 0, 2);
-        //     for (auto& part : model->parts())
-        //         objects_.push_back({ part.mesh.get(), part.material, T });
-        //     models_.push_back(std::move(model));
-        // }
+        Material violet;
+        violet.diffuse = {0.55f, 0.25f, 0.8f};
+        violet.specular = {0.3f, 0.3f, 0.3f};
+        violet.shininess = 32.0f;
+        SceneObject obj;
+        obj.mesh = Mesh::makeCube();
+        obj.material = violet;
+        obj.transform = mat4_translation(-2.5f, 0.0f, 0.0f);
+        objects_.push_back(obj);
     }
 
-    // =========================================================
-    //  SECTION PERSONNE B  (objets pour tester le shading)
-    // =========================================================
+    // Personne B
     {
-        // Sphere "metal" diffuse rouge + speculaire marque.
-        Material red;
-        red.diffuse = {0.7f, 0.1f, 0.1f};
-        red.specular = {0.9f, 0.9f, 0.9f};
-        red.shininess = 64.0f;
-        objects_.push_back({ sphere, red, mat4_translation(0, 0, 0) });
+        Material rose;
+        rose.diffuse = {0.95f, 0.4f, 0.65f};
+        rose.specular = {0.5f, 0.5f, 0.5f};
+        rose.shininess = 48.0f;
+        SceneObject sphere;
+        sphere.mesh = Mesh::makeSphere();
+        sphere.material = rose;
+        sphere.transform = mat4_translation(0.0f, 0.0f, 0.0f);
+        objects_.push_back(sphere);
 
-        // Cube bleu mat.
-        Material blue;
-        blue.diffuse = {0.1f, 0.3f, 0.7f};
-        blue.specular = {0.2f, 0.2f, 0.2f};
-        blue.shininess = 16.0f;
+        Material bleuClair;
+        bleuClair.diffuse = {0.45f, 0.75f, 0.95f};
+        bleuClair.specular = {0.3f, 0.3f, 0.3f};
+        bleuClair.shininess = 32.0f;
         Mat4 T = mat4_translation(2.0f, 0.0f, -1.0f);
         Mat4 S = mat4_scale(0.8f, 0.8f, 0.8f);
-        objects_.push_back({ cube, blue, mat4_mul(T, S) });
+        SceneObject cube;
+        cube.mesh = Mesh::makeCube();
+        cube.material = bleuClair;
+        cube.transform = mat4_mul(T, S);
+        objects_.push_back(cube);
     }
 
-    // =========================================================
-    //  SECTION PERSONNE C  (decor / navigation)
-    // =========================================================
+    // Personne C
     {
-        // Sol : un cube tres aplati.
         Material floor;
         floor.diffuse = {0.4f, 0.4f, 0.45f};
         floor.specular = {0.05f, 0.05f, 0.05f};
         floor.shininess = 8.0f;
-        Mat4 T = mat4_translation(0, -1.2f, 0);
+        Mat4 T = mat4_translation(0.0f, -1.2f, 0.0f);
         Mat4 S = mat4_scale(12.0f, 0.1f, 12.0f);
-        objects_.push_back({ cube, floor, mat4_mul(T, S) });
+        SceneObject ground;
+        ground.mesh = Mesh::makeCube();
+        ground.material = floor;
+        ground.transform = mat4_mul(T, S);
+        objects_.push_back(ground);
     }
 }
