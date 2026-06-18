@@ -44,7 +44,7 @@ Partie 3 (options) :
 - instancing pour l'anneau de cubes
 - skybox en cubemap (6 images dans assets/)
 - texture procédurale : compute shader si OpenGL 4.3, sinon version fragment
-  (sur Mac on est limité à 4.1, du coup c'est le fallback qui tourne)
+  (sur Mac on est limité à 4.1, donc on utilise un fallback)
 - interface ImGui
 - effet de rim / back-light
 - Fresnel de Schlick pour équilibrer diffus et spéculaire
