@@ -1,6 +1,13 @@
-# Projet OpenGL M1
+Lorenzo BRAVARD 1I
+Iakov BELKOV 2I
+Adrien BRUNET 2I
 
-Notre projet de Computer Graphics : une petite scène 3D (sol, sphères, tore, cube,
+E4FI
+
+
+# Projet Computer Graphics
+
+Projet de Computer Graphics : une scène 3D (sol, sphères, tore, cube,
 un anneau de cubes) avec une caméra qu'on peut bouger autour, en OpenGL moderne.
 
 ## Compilation
@@ -14,7 +21,7 @@ cmake --build build
 ```
 
 L'exécutable se trouve dans `build/` (les dossiers `shaders/` et `assets/` sont
-copiés à côté). Il faut OpenGL 4.1 minimum.
+copiés à côté). Il faut OpenGL 4.1 minimum (sur MACOS 4.1, windows 4.3).
 
 ## Commandes
 
@@ -26,7 +33,7 @@ copiés à côté). Il faut OpenGL 4.1 minimum.
 Le panneau ImGui en haut à gauche permet d'activer/désactiver les options
 (Phong/Blinn, env map, ambiante, rim, skybox, instancing, effets...).
 
-## Ce qu'on a fait
+## Réalisations 
 
 Partie 1 :
 - chargement de .obj avec TinyOBJLoader + matériaux du .mtl (mesh.cpp)
