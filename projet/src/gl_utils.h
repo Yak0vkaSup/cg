@@ -106,6 +106,9 @@ struct Framebuffer {
 
 GLuint load_texture_2d(const std::string& path, bool srgb);
 
+// charge une cubemap depuis 6 images : dir/px,nx,py,ny,pz,nz + extension
+GLuint load_cubemap(const std::string& dir, const std::string& ext, bool srgb);
+
 void save_screenshot(const std::string& path, int w, int h);
 
 inline GLuint white_texture() {
@@ -117,70 +120,6 @@ inline GLuint white_texture() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     return t;
-}
-
-inline GLuint make_sky_cubemap(int size = 256) {
-    GLuint cube;
-    glGenTextures(1, &cube);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, cube);
-
-    auto sky = [](Vec3 d) -> Vec3 {
-        d = vec3_norm(d);
-        float t = 0.5f * (d.y + 1.0f);
-        Vec3 horizon { 0.80f, 0.86f, 0.92f };
-        Vec3 zenith  { 0.18f, 0.32f, 0.62f };
-        Vec3 ground  { 0.22f, 0.20f, 0.18f };
-        Vec3 base;
-        if (d.y >= 0.0f) {
-            float k = std::pow(t, 0.6f);
-            base = vec3_add(vec3_scale(horizon, 1.0f - k), vec3_scale(zenith, k));
-        } else {
-            float k = std::pow(-d.y, 0.5f);
-            base = vec3_add(vec3_scale(horizon, 1.0f - k), vec3_scale(ground, k));
-        }
-
-        Vec3 sunDir = vec3_norm(Vec3{ 0.5f, 0.8f, 0.4f });
-        float s = vec3_dot(d, sunDir);
-        if (s > 0.0f) {
-            float glow = std::pow(s, 350.0f) * 3.0f + std::pow(s, 8.0f) * 0.15f;
-            base = vec3_add(base, vec3_scale(Vec3{ 1.0f, 0.95f, 0.8f }, glow));
-        }
-        return base;
-    };
-
-    struct Face { GLenum target; Vec3 forward, right, up; };
-    Face faces[6] = {
-        { GL_TEXTURE_CUBE_MAP_POSITIVE_X, { 1,0,0},  {0,0,-1}, {0,-1,0} },
-        { GL_TEXTURE_CUBE_MAP_NEGATIVE_X, {-1,0,0},  {0,0, 1}, {0,-1,0} },
-        { GL_TEXTURE_CUBE_MAP_POSITIVE_Y, { 0,1,0},  {1,0, 0}, {0, 0,1} },
-        { GL_TEXTURE_CUBE_MAP_NEGATIVE_Y, { 0,-1,0}, {1,0, 0}, {0, 0,-1} },
-        { GL_TEXTURE_CUBE_MAP_POSITIVE_Z, { 0,0,1},  {1,0, 0}, {0,-1,0} },
-        { GL_TEXTURE_CUBE_MAP_NEGATIVE_Z, { 0,0,-1}, {-1,0,0}, {0,-1,0} },
-    };
-
-    std::vector<float> buf(size * size * 3);
-    for (const Face& fc : faces) {
-        for (int y = 0; y < size; ++y) {
-            for (int x = 0; x < size; ++x) {
-                float u = (2.0f * (x + 0.5f) / size) - 1.0f;
-                float v = (2.0f * (y + 0.5f) / size) - 1.0f;
-                Vec3 dir = vec3_add(fc.forward,
-                            vec3_add(vec3_scale(fc.right, u), vec3_scale(fc.up, v)));
-                Vec3 c = sky(dir);
-                int i = (y * size + x) * 3;
-                buf[i + 0] = c.x; buf[i + 1] = c.y; buf[i + 2] = c.z;
-            }
-        }
-        glTexImage2D(fc.target, 0, GL_RGB16F, size, size, 0, GL_RGB, GL_FLOAT, buf.data());
-    }
-
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-    glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
-    return cube;
 }
 
 }

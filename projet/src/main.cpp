@@ -200,7 +200,7 @@ int main(int argc, char** argv) {
     glBufferData(GL_UNIFORM_BUFFER, sizeof(ObjectUBO), nullptr, GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_UNIFORM_BUFFER, 1, objectUBO);
 
-    GLuint envCube = glu::make_sky_cubemap(256);
+    GLuint envCube = glu::load_cubemap(assetDir, ".png", true);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_CUBE_MAP, envCube);
 
