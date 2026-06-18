@@ -1,0 +1,2 @@
+/usr/bin/ar qc libglad_gl_core_43.a CMakeFiles/glad_gl_core_43.dir/external/glad/src/gl.c.o
+/usr/bin/ranlib libglad_gl_core_43.a
