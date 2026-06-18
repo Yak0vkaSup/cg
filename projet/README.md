@@ -9,8 +9,9 @@ plusieurs objets et permet d'y naviguer avec une caméra orbitale.
 ## Compilation
 
 **GLFW 3.4** et **Dear ImGui 1.91.5** sont récupérés automatiquement par CMake
-(`FetchContent`). Le loader **glad** (gl core 4.1) est *fourni pré-généré* dans
-`external/glad/` — **aucun Python ni `jinja2` n'est requis** pour compiler. Les
+(`FetchContent`). Le loader **glad** (gl core jusqu'à 4.3) est *fourni pré-généré*
+dans `external/glad/` — **aucun Python ni `jinja2` n'est requis** pour compiler.
+L'application demande un contexte 4.3 et retombe sur 4.1 si indisponible (macOS). Les
 bibliothèques mono-header **stb_image / stb_image_write** et **TinyOBJLoader**
 sont dans `src/`.
 
@@ -57,8 +58,8 @@ post-traitement en direct. Lancer avec `--screenshot` rend ~90 images puis écri
 - **1.c Illumination indirecte** — ambiante **hémisphérique** (diffuse) +
   **environment mapping** (spéculaire, réflexion de la cubemap) — `phong.frag`.
 - **1.d Rendu hors-écran** — la scène est rendue dans un **FBO HDR (RGBA16F)**
-  puis résolue dans le backbuffer ; **tone mapping ACES + gamma sRGB** dans
-  `post.frag` (gestion linéaire ↔ sRGB).
+  puis résolue dans le backbuffer ; **tone mapping de Reinhard + gamma 2.2** dans
+  `post.frag` (gestion linéaire → sRGB).
 
 ### Partie 2 — Navigation
 - **2.a** — objets placés à des positions/rotations/échelles distinctes
@@ -69,12 +70,16 @@ post-traitement en direct. Lancer avec `--screenshot` rend ~90 images puis écri
   (compatible 4.1). Caméra **orbitale** type arcball (`camera.h`).
 
 ### Partie 3 — Options (toutes implémentées)
-- **3.a** Post-traitement (tone mapping, vignette, N&B / négatif / sépia) — `post.frag`
-- **3.b** **Instancing** matériel (anneau de cubes, `glDrawArraysInstanced`) — `instanced.*`
-- **3.c** **Skybox** cubemap — `skybox.*` (cubemap ciel procédurale)
-- **3.d** **Texture procédurale** (marbre/fbm) générée sur GPU par *render-to-texture*
-  (FBO + `procedural.frag`). NB : la version *compute shader* (OpenGL 4.3) a été
-  remplacée par cette variante fragment pour rester compatible macOS (OpenGL 4.1).
+- **3.a** Post-traitement (tone mapping Reinhard, N&B / négatif / sépia) — `post.frag`
+- **3.b** **Instancing** matériel (anneau de cubes, `glDrawElementsInstanced`) — `instanced.*`
+- **3.c** **Skybox** cubemap — `skybox.*` ; cubemap **chargée depuis 6 images**
+  (`assets/px,nx,py,ny,pz,nz.png`, `load_cubemap`).
+- **3.d** **Texture procédurale** (marbre/fbm) générée sur GPU. Deux chemins :
+  - **compute shader** `procedural.comp` (`glDispatchCompute` + `imageStore`) si le
+    contexte est **OpenGL 4.3** ;
+  - **fallback** *render-to-texture* fragment (`procedural.frag` + FBO) si le
+    contexte retombe en **4.1** (macOS).
+  Le chemin utilisé est choisi au runtime selon la version GL détectée.
 - **3.e** Interface **ImGui**
 - **3.f** Effet **Fresnel / back-light (rim)** — `phong.frag`
 - **3.g** **Fresnel de Schlick** pour équilibrer diffus / spéculaire — `phong.frag`
@@ -89,11 +94,11 @@ projet/
 │  ├─ math3d.h          maths colonne-major (hérité du TD de préparation)
 │  ├─ camera.h          caméra orbitale
 │  ├─ mesh.h / mesh.cpp chargement OBJ/MTL (TinyOBJLoader) + instancing
-│  ├─ gl_utils.h        shaders, FBO, textures, cubemap procédurale
-│  ├─ image_io.cpp      stb_image / stb_image_write (textures, screenshot)
+│  ├─ gl_utils.h        shaders (vf + compute), FBO, textures
+│  ├─ image_io.cpp      stb_image / stb_image_write (textures, cubemap, screenshot)
 │  ├─ tiny_obj_loader.h, stb_image.h, stb_image_write.h  (vendored)
-├─ external/glad/       loader glad pré-généré (gl core 4.1, pas de Python)
-├─ shaders/             phong, skybox, post, instanced, procedural (fragment)
+├─ external/glad/       loader glad pré-généré (gl core 4.3, pas de Python)
+├─ shaders/             phong, skybox, post, instanced, procedural (.frag + .comp)
 ├─ assets/              .obj / .mtl / .png générés
 └─ tools/gen_assets.py  générateur d'assets
 ```

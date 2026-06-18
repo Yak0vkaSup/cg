@@ -121,17 +121,25 @@ static const float QUAD_VERTS[] = {
 int main(int argc, char** argv) {
     if (!glfwInit()) { std::fprintf(stderr, "glfwInit failed\n"); return 1; }
 
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
-
     bool screenshotMode = false;
     for (int i = 1; i < argc; ++i)
         if (std::string(argv[i]) == "--screenshot") screenshotMode = true;
 
+    auto setGLHints = [](int major, int minor) {
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, major);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, minor);
+        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+    };
+
     App app;
+    // on tente un contexte 4.3 (compute shader) ; sinon repli sur 4.1 (macOS)
+    setGLHints(4, 3);
     GLFWwindow* win = glfwCreateWindow(app.W, app.H, "Projet OpenGL M1 - Scene 3D", nullptr, nullptr);
+    if (!win) {
+        setGLHints(4, 1);
+        win = glfwCreateWindow(app.W, app.H, "Projet OpenGL M1 - Scene 3D", nullptr, nullptr);
+    }
     if (!win) { std::fprintf(stderr, "CreateWindow failed (need OpenGL 4.1)\n"); glfwTerminate(); return 1; }
     glfwSetWindowUserPointer(win, &app);
     glfwMakeContextCurrent(win);
@@ -147,6 +155,10 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "gladLoadGL failed\n"); return 1;
     }
     std::printf("OpenGL %s\n", glGetString(GL_VERSION));
+    // compute shader disponible seulement si le contexte est >= 4.3
+    bool hasCompute = (GLAD_GL_VERSION_4_3 != 0);
+    std::printf("Compute shader : %s\n",
+                hasCompute ? "disponible (GL 4.3)" : "indisponible (fallback fragment)");
     glfwGetFramebufferSize(win, &app.W, &app.H);
 
     glEnable(GL_DEPTH_TEST);
@@ -162,6 +174,7 @@ int main(int argc, char** argv) {
     GLuint progPost      = glu::program_vf(sp("post.vert"),      sp("post.frag"));
     GLuint progInstanced = glu::program_vf(sp("instanced.vert"), sp("instanced.frag"));
     GLuint progProcedural = glu::program_vf(sp("post.vert"), sp("procedural.frag"));
+    GLuint progProceduralCompute = hasCompute ? glu::program_compute(sp("procedural.comp")) : 0;
 
     // association des blocs UBO aux points de binding
     auto bindBlock = [](GLuint prog, const char* name, GLuint binding) {
@@ -288,7 +301,7 @@ int main(int argc, char** argv) {
         { &mSphere,     {-2.6f,  1.0f,  0.0f }, { 1, 1, 1 }, 0.5f,  0.0f, 0 },
         { &mTorus,      { 2.6f,  1.3f,  0.0f }, { 1, 1, 1 }, 0.8f,  1.0f, 0 },
         { &mSphereBlue, { 0.0f,  1.0f,  2.8f }, { 0.9f, 0.9f, 0.9f }, -0.6f, 0.0f, 0 },
-        { &mCube,       { 0.0f,  0.6f, -2.8f }, { 1, 1, 1 }, 0.9f,  0.0f, 0 },
+        { &mCube,       { 0.0f,  0.7f, -2.8f }, { 1, 1, 1 }, 0.9f,  0.0f, 0 },
         { &mProcSphere, { 0.0f,  2.6f,  0.0f }, { 0.8f, 0.8f, 0.8f }, 0.7f, 0.0f, procTex },
     };
 
@@ -316,16 +329,26 @@ int main(int argc, char** argv) {
 
         scene_fbo.resize(app.W, app.H);
 
-        // 1) texture procedurale dans son FBO
-        glBindFramebuffer(GL_FRAMEBUFFER, procFbo);
-        glViewport(0, 0, PROC, PROC);
-        glDisable(GL_DEPTH_TEST);
-        glUseProgram(progProcedural);
-        glUniform1f(glGetUniformLocation(progProcedural, "uTime"), t);
-        glBindVertexArray(quadVao);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-        glEnable(GL_DEPTH_TEST);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        // 1) generation de la texture procedurale
+        if (hasCompute) {
+            // compute shader : ecriture directe dans l'image procTex
+            glUseProgram(progProceduralCompute);
+            glUniform1f(glGetUniformLocation(progProceduralCompute, "uTime"), t);
+            glBindImageTexture(0, procTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA8);
+            glDispatchCompute(PROC / 16, PROC / 16, 1);
+            glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+        } else {
+            // fallback (macOS 4.1) : render-to-texture via un FBO
+            glBindFramebuffer(GL_FRAMEBUFFER, procFbo);
+            glViewport(0, 0, PROC, PROC);
+            glDisable(GL_DEPTH_TEST);
+            glUseProgram(progProcedural);
+            glUniform1f(glGetUniformLocation(progProcedural, "uTime"), t);
+            glBindVertexArray(quadVao);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glEnable(GL_DEPTH_TEST);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        }
 
         // 2) rendu de la scene dans le FBO
         glBindFramebuffer(GL_FRAMEBUFFER, scene_fbo.fbo);
@@ -454,7 +477,7 @@ int main(int argc, char** argv) {
         ImGui::Checkbox("Animer", &app.animate);
         ImGui::SeparatorText("Post-traitement");
         ImGui::SliderFloat("Exposure", &app.exposure, 0.1f, 4.0f);
-        ImGui::Combo("Effet", &app.postMode, "Aucun\0Niveaux de gris\0Negatif\0Sepia\0");
+        ImGui::Combo("Effet", &app.postMode, "Aucun\0Noir et blanc\0Sepia\0");
         ImGui::End();
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

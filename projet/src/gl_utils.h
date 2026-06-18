@@ -62,6 +62,17 @@ inline GLuint program_vf(const std::string& vsPath, const std::string& fsPath) {
     return p;
 }
 
+// programme compute (OpenGL 4.3+)
+inline GLuint program_compute(const std::string& csPath) {
+    GLuint cs = compile(GL_COMPUTE_SHADER, read_file(csPath), csPath.c_str());
+    GLuint p = glCreateProgram();
+    glAttachShader(p, cs);
+    glLinkProgram(p);
+    link_check(p, csPath.c_str());
+    glDeleteShader(cs);
+    return p;
+}
+
 struct Framebuffer {
     GLuint fbo = 0, color = 0, depth = 0;
     int w = 0, h = 0;
