@@ -11,7 +11,7 @@ out vec3 vDir;
 
 void main() {
     vDir = aPos;
-    mat4 viewNoTranslation = mat4(mat3(uView));  // on enleve la translation
+    mat4 viewNoTranslation = mat4(mat3(uView));  
     vec4 pos = uProj * viewNoTranslation * vec4(aPos, 1.0);
-    gl_Position = pos.xyww;   // profondeur max (skybox au fond)
+    gl_Position = pos.xyww;   
 }

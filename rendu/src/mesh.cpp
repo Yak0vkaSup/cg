@@ -8,7 +8,6 @@
 namespace {
 struct V { float px, py, pz, nx, ny, nz, u, v; };
 
-// cle pour fusionner les sommets identiques (position / normale / uv)
 struct Key {
     int v, n, t;
     bool operator<(const Key& o) const {
@@ -22,7 +21,7 @@ struct Key {
 bool Mesh::load(const std::string& objPath, const std::string& assetDir) {
     tinyobj::ObjReaderConfig config;
     config.mtl_search_path = assetDir;
-    config.triangulate = true;   // on force les triangles
+    config.triangulate = true;  
 
     tinyobj::ObjReader reader;
     if (!reader.ParseFromFile(objPath, config)) {
@@ -37,7 +36,7 @@ bool Mesh::load(const std::string& objPath, const std::string& assetDir) {
     const std::vector<tinyobj::shape_t>&    shapes  = reader.GetShapes();
     const std::vector<tinyobj::material_t>& objMats = reader.GetMaterials();
 
-    // materiaux (Ka, Kd, Ks, Ns, texture diffuse)
+    
     std::map<std::string, GLuint> texCache;
     auto loadTex = [&](const std::string& file) -> GLuint {
         if (file.empty()) return 0;
@@ -62,10 +61,8 @@ bool Mesh::load(const std::string& objPath, const std::string& assetDir) {
         materials_.push_back(mat);
     }
     const int defaultMat = (int)materials_.size();
-    materials_.push_back(Material{});   // materiau par defaut
+    materials_.push_back(Material{});   
 
-    // OBJ a 3 tableaux d'indices, OpenGL n'en gere qu'un :
-    // on recree des sommets uniques et on construit un seul tableau d'indices.
     std::vector<V>      vertices;
     std::map<int, std::vector<GLuint>> indicesByMat;
     std::map<Key, GLuint> uniqueVerts;
@@ -121,7 +118,7 @@ bool Mesh::load(const std::string& objPath, const std::string& assetDir) {
         indices.insert(indices.end(), kv.second.begin(), kv.second.end());
     }
 
-    // envoi au GPU : VAO + VBO + IBO
+    
     glGenVertexArrays(1, &vao_);
     glGenBuffers(1, &vbo_);
     glGenBuffers(1, &ibo_);
@@ -130,16 +127,16 @@ bool Mesh::load(const std::string& objPath, const std::string& assetDir) {
     glBindBuffer(GL_ARRAY_BUFFER, vbo_);
     glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(V), vertices.data(), GL_STATIC_DRAW);
 
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_);   // l'IBO est stocke dans le VAO
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_);   
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(GLuint),
                  indices.data(), GL_STATIC_DRAW);
 
     const GLsizei stride = sizeof(V);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);                  // position
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);                  
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(3*sizeof(float)));  // normale
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(3*sizeof(float)));  
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(6*sizeof(float)));  // uv
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(6*sizeof(float)));  
     glEnableVertexAttribArray(2);
 
     glBindVertexArray(0);
@@ -157,14 +154,14 @@ void Mesh::setup_instancing(const std::vector<float>& instanceData, GLsizei stri
 
     const GLsizei stride = strideFloats * (GLsizei)sizeof(float);
 
-    // une mat4 = 4 attributs (locations 3 a 6), un par instance
+    
     for (int i = 0; i < 4; ++i) {
         glEnableVertexAttribArray(3 + i);
         glVertexAttribPointer(3 + i, 4, GL_FLOAT, GL_FALSE, stride,
                               (void*)(size_t)(i * 4 * sizeof(float)));
         glVertexAttribDivisor(3 + i, 1);
     }
-    // couleur de l'instance (location 7)
+    
     glEnableVertexAttribArray(7);
     glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, stride, (void*)(size_t)(16 * sizeof(float)));
     glVertexAttribDivisor(7, 1);

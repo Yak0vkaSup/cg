@@ -3,14 +3,14 @@ layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aUV;
 
-// matrices camera (partagees par tous les shaders)
+
 layout(std140) uniform Camera {
     mat4 uView;
     mat4 uProj;
     vec4 uCamPos;
 };
 
-// matrice monde + normal matrix de l'objet
+
 layout(std140) uniform Object {
     mat4 uModel;
     mat4 uNormalMat;

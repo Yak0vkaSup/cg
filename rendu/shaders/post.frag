@@ -3,7 +3,7 @@ in vec2 vUV;
 out vec4 FragColor;
 
 uniform sampler2D uScene;
-uniform int       uPostMode;   // 0=aucun 1=noir et blanc 2=sepia
+uniform int uPostMode;  
 
 void main() {
     vec3 color = texture(uScene, vUV).rgb;
@@ -18,7 +18,6 @@ void main() {
                      dot(color, vec3(0.272, 0.534, 0.131)));
     }
 
-    // correction gamma (lineaire -> sRGB)
     color = pow(clamp(color, 0.0, 1.0), vec3(1.0 / 2.2));
     FragColor = vec4(color, 1.0);
 }

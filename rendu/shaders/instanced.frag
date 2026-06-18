@@ -20,11 +20,9 @@ void main() {
     vec3 V = normalize(uCamPos.xyz - vWorldPos);
     vec3 L = normalize(uLightDir);
 
-    // ambiante hemispherique
     float h = 0.5 * (N.y + 1.0);
     vec3 ambient = mix(vec3(0.2, 0.18, 0.16), vec3(0.5, 0.62, 0.9), h) * vColor;
 
-    // diffus + speculaire
     float NdotL = max(dot(N, L), 0.0);
     vec3  H = normalize(L + V);
     float spec = pow(max(dot(N, H), 0.0), 48.0);

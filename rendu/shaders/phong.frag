@@ -7,7 +7,7 @@ out vec4 FragColor;
 layout(std140) uniform Camera {
     mat4 uView;
     mat4 uProj;
-    vec4 uCamPos;   // position camera (E)
+    vec4 uCamPos;   
 };
 
 struct Material {
@@ -18,10 +18,10 @@ struct Material {
 };
 uniform Material uMaterial;
 
-// lumiere directionnelle
+
 struct DirLight {
-    vec3 direction;  // L
-    vec3 color;      // Id
+    vec3 direction;  
+    vec3 color;      
 };
 uniform DirLight uLights[2];
 uniform int      uNumLights;
@@ -42,7 +42,7 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0) {
 }
 
 void main() {
-    vec3  N = normalize(vNormal);   // on renormalise apres interpolation
+    vec3  N = normalize(vNormal);   
     vec3  V = normalize(uCamPos.xyz - vWorldPos);
     float NdotV = max(dot(N, V), 0.0);
 
@@ -52,7 +52,7 @@ void main() {
     vec3  F0        = uMaterial.Ks;
     float shininess = max(uMaterial.Ns, 1.0);
 
-    // illumination directe
+    
     vec3 Lo = vec3(0.0);
     for (int i = 0; i < uNumLights; ++i) {
         vec3  L  = normalize(uLights[i].direction);
@@ -63,9 +63,9 @@ void main() {
         vec3  H = normalize(L + V);
         float specFactor;
         if (uUseBlinn)
-            specFactor = pow(max(dot(N, H), 0.0), shininess);              // Blinn-Phong
+            specFactor = pow(max(dot(N, H), 0.0), shininess);              
         else
-            specFactor = pow(max(dot(reflect(-L, N), V), 0.0), shininess); // Phong
+            specFactor = pow(max(dot(reflect(-L, N), V), 0.0), shininess); 
 
         // Schlick : equilibre diffus / speculaire (kd = 1 - F)
         vec3 F  = uUseSchlick ? fresnelSchlick(max(dot(H, V), 0.0), F0) : F0;
@@ -74,7 +74,7 @@ void main() {
         Lo += Id * NdotL * (kd * albedo + F * specFactor);
     }
 
-    // ambiante : hemispherique ou simple
+    
     vec3 indirect = vec3(0.0);
     if (uUseHemi) {
         vec3 skyColor    = vec3(0.40, 0.50, 0.72);
@@ -84,7 +84,7 @@ void main() {
     } else {
         indirect += uMaterial.Ka;
     }
-    // reflet de l'environnement
+    // reflet 
     if (uUseEnv) {
         vec3 R = reflect(-V, N);
         vec3 Fenv = uUseSchlick ? fresnelSchlick(NdotV, F0) : F0;
@@ -99,5 +99,5 @@ void main() {
         color += rim * vec3(0.25, 0.40, 0.70) * 0.6;
     }
 
-    FragColor = vec4(color, 1.0);   // HDR, gamma applique dans post.frag
+    FragColor = vec4(color, 1.0);   
 }

@@ -41,7 +41,7 @@ GLuint load_cubemap(const std::string& dir, const std::string& ext, bool srgb) {
     const char* names[6] = { "px", "nx", "py", "ny", "pz", "nz" };
     GLenum internal = srgb ? GL_SRGB8_ALPHA8 : GL_RGBA8;
 
-    // les faces de cubemap ne sont PAS retournees verticalement
+    // les faces de cubemap ne sont pas retournees verticalement
     stbi_set_flip_vertically_on_load(0);
     for (int i = 0; i < 6; ++i) {
         std::string path = dir + "/" + names[i] + ext;

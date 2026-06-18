@@ -18,13 +18,13 @@
 
 namespace fs = std::filesystem;
 
-// UBO partage : matrices vue/projection + position camera
+
 struct CameraUBO {
     float view[16];
     float proj[16];
     float camPos[4];
 };
-// UBO par objet : matrice monde + normal matrix
+
 struct ObjectUBO {
     float model[16];
     float normalMat[16];
@@ -92,7 +92,7 @@ static void on_key(GLFWwindow* w, int key, int sc, int action, int mods) {
     if (key == GLFW_KEY_R)      a->cam = OrbitCamera{};
 }
 
-// cube de la skybox
+
 static const float SKYBOX_VERTS[] = {
     -1,-1,-1,  -1,-1, 1,  -1, 1, 1,  -1, 1, 1,  -1, 1,-1,  -1,-1,-1,
      1,-1,-1,   1, 1,-1,   1, 1, 1,   1, 1, 1,   1,-1, 1,   1,-1,-1,
@@ -102,7 +102,7 @@ static const float SKYBOX_VERTS[] = {
     -1,-1,-1,   1,-1,-1,   1,-1, 1,   1,-1, 1,  -1,-1, 1,  -1,-1,-1,
 };
 
-// quad plein ecran : position + uv
+
 static const float QUAD_VERTS[] = {
     -1.0f, -1.0f,  0.0f, 0.0f,
      1.0f, -1.0f,  1.0f, 0.0f,
@@ -123,7 +123,7 @@ int main(int argc, char** argv) {
     };
 
     App app;
-    // on tente un contexte 4.3 (compute shader) ; sinon repli sur 4.1 (macOS)
+    // on tente avec 4.3 (compute shader)  sinon retour  sur 4.1 (MacOS)
     setGLHints(4, 3);
     GLFWwindow* win = glfwCreateWindow(app.W, app.H, "Projet OpenGL M1 - Scene 3D", nullptr, nullptr);
     if (!win) {
@@ -145,10 +145,10 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "gladLoadGL failed\n"); return 1;
     }
     std::printf("OpenGL %s\n", glGetString(GL_VERSION));
-    // compute shader disponible seulement si le contexte est >= 4.3
+    // compute shader disponible seulement si le contexte est >= 4.3 
     bool hasCompute = (GLAD_GL_VERSION_4_3 != 0);
     std::printf("Compute shader : %s\n",
-                hasCompute ? "disponible (GL 4.3)" : "indisponible (fallback fragment)");
+                hasCompute ? "disponible (GL 4.3)" : "indisponible (fallback)");
     glfwGetFramebufferSize(win, &app.W, &app.H);
 
     glEnable(GL_DEPTH_TEST);
@@ -165,7 +165,7 @@ int main(int argc, char** argv) {
     GLuint progProcedural = glu::program_vf(sp("post.vert"), sp("procedural.frag"));
     GLuint progProceduralCompute = hasCompute ? glu::program_compute(sp("procedural.comp")) : 0;
 
-    // association des blocs UBO aux points de binding
+    
     auto bindBlock = [](GLuint prog, const char* name, GLuint binding) {
         GLuint idx = glGetUniformBlockIndex(prog, name);
         if (idx != GL_INVALID_INDEX) glUniformBlockBinding(prog, idx, binding);
@@ -175,7 +175,7 @@ int main(int argc, char** argv) {
     bindBlock(progSkybox,    "Camera", 0);
     bindBlock(progInstanced, "Camera", 0);
 
-    // unites de texture : 0 = diffuse, 1 = cubemap
+    
     glUseProgram(progPhong);
     glUniform1i(glGetUniformLocation(progPhong, "uDiffuseTex"), 0);
     glUniform1i(glGetUniformLocation(progPhong, "uEnvMap"),     1);
@@ -186,7 +186,7 @@ int main(int argc, char** argv) {
     glUseProgram(progPost);
     glUniform1i(glGetUniformLocation(progPost, "uScene"), 0);
 
-    // petits helpers pour transmettre les uniforms
+    // petits helpers just pour se simplifier la life 
     auto setBool  = [](GLuint p, const char* n, bool v)  { glUniform1i(glGetUniformLocation(p, n), v ? 1 : 0); };
     auto setFloat = [](GLuint p, const char* n, float v) { glUniform1f(glGetUniformLocation(p, n), v); };
     auto setVec3  = [](GLuint p, const char* n, Vec3 v)  { glUniform3f(glGetUniformLocation(p, n), v.x, v.y, v.z); };
@@ -216,7 +216,7 @@ int main(int argc, char** argv) {
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
-    // VAO/VBO du quad (post-traitement et texture procedurale)
+    // VAO/VBO du quad 
     GLuint quadVao, quadVbo;
     glGenVertexArrays(1, &quadVao);
     glGenBuffers(1, &quadVbo);
@@ -229,7 +229,7 @@ int main(int argc, char** argv) {
     glEnableVertexAttribArray(1);
     glBindVertexArray(0);
 
-    // texture procedurale : rendue dans un FBO
+    // texture procedurale 
     const int PROC = 512;
     GLuint procTex;
     glGenTextures(1, &procTex);
@@ -256,7 +256,7 @@ int main(int argc, char** argv) {
     mProcSphere.load((fs::path(assetDir) / "sphere.obj").string(),      assetDir);
     mInstance.load  ((fs::path(assetDir) / "cube.obj").string(),        assetDir);
 
-    // donnees d'instances : matrice monde + couleur pour chaque cube
+    // matrice monde + couleur pour chaque cube
     std::vector<float> inst;
     auto pushInstance = [&](Mat4 m, Vec3 c) {
         for (int i = 0; i < 16; ++i) inst.push_back(m.m[i]);
@@ -284,7 +284,7 @@ int main(int argc, char** argv) {
     app.instanceCount = (int)(inst.size() / 20);
     mInstance.setup_instancing(inst, 20);
 
-    // placement des objets (positions / rotations / echelles propres)
+    // on place les objects 
     std::vector<SceneObject> scene = {
         { &mPlane,      { 0.0f,  0.0f,  0.0f }, { 1, 1, 1 },          0.0f, 0 },
         { &mSphere,     {-2.6f,  1.0f,  0.0f }, { 1, 1, 1 },          0.0f, 0 },
@@ -300,19 +300,19 @@ int main(int argc, char** argv) {
     ImGui_ImplGlfw_InitForOpenGL(win, true);
     ImGui_ImplOpenGL3_Init("#version 150");
 
-    // FBO pour le rendu hors ecran
+    
     glu::Framebuffer scene_fbo;
     scene_fbo.create(app.W, app.H);
 
-    // texture procedurale (statique) : generee une seule fois
+    // texture procedurale
     if (hasCompute) {
-        // compute shader : ecriture directe dans l'image procTex
+        // compute shader 
         glUseProgram(progProceduralCompute);
         glBindImageTexture(0, procTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA8);
         glDispatchCompute(PROC / 16, PROC / 16, 1);
         glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
     } else {
-        // fallback (macOS 4.1) : render-to-texture via un FBO
+        // fallback (macOS 4.1) -> render-to-texture via un FBO
         glBindFramebuffer(GL_FRAMEBUFFER, procFbo);
         glViewport(0, 0, PROC, PROC);
         glDisable(GL_DEPTH_TEST);
@@ -348,7 +348,7 @@ int main(int argc, char** argv) {
         glBindBuffer(GL_UNIFORM_BUFFER, cameraUBO);
         glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(CameraUBO), &cu);
 
-        // lumieres directionnelles (L = direction vers la lumiere) ; la principale tourne
+        // lumieres 
         Vec3 keyDir  = vec3_norm(Vec3{ 0.4f, 0.95f, 0.5f });
         Vec3 fillDir = vec3_norm(Vec3{ -0.5f, 0.6f, -0.4f });
 
@@ -379,7 +379,7 @@ int main(int argc, char** argv) {
             o.mesh->draw([&](const Material& mat) {
                 Vec3 kd = mat.Kd;
                 GLuint tex; bool hasTex;
-                if (o.overrideTex) {            // sphere texturee par la texture procedurale
+                if (o.overrideTex) {            
                     tex = o.overrideTex; hasTex = true;
                     kd = Vec3{ 1.0f, 1.0f, 1.0f };
                 } else if (mat.hasTexture) {
@@ -398,7 +398,7 @@ int main(int argc, char** argv) {
             });
         }
 
-        // anneau de cubes (instancing)
+        // anneau de cubes 
         if (app.drawInstances) {
             glUseProgram(progInstanced);
             setVec3(progInstanced, "uLightDir",   keyDir);
@@ -407,7 +407,7 @@ int main(int argc, char** argv) {
             mInstance.draw_instanced(app.instanceCount);
         }
 
-        // skybox dessinee en dernier
+        // skybox en dernier
         if (app.drawSkybox) {
             glDepthFunc(GL_LEQUAL);
             glUseProgram(progSkybox);
@@ -416,7 +416,7 @@ int main(int argc, char** argv) {
             glDepthFunc(GL_LESS);
         }
 
-        // 3) post-traitement : FBO -> ecran
+        // post-traitement  FBO -> ecran
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, app.W, app.H);
         glDisable(GL_DEPTH_TEST);
@@ -428,7 +428,7 @@ int main(int argc, char** argv) {
         glDrawArrays(GL_TRIANGLES, 0, 6);
         glEnable(GL_DEPTH_TEST);
 
-        // interface ImGui
+        // interface 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
@@ -463,4 +463,5 @@ int main(int argc, char** argv) {
     glfwDestroyWindow(win);
     glfwTerminate();
     return 0;
+
 }

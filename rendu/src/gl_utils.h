@@ -62,7 +62,7 @@ inline GLuint program_vf(const std::string& vsPath, const std::string& fsPath) {
     return p;
 }
 
-// programme compute (OpenGL 4.3+)
+// programme compute (OpenGL 4.3)
 inline GLuint program_compute(const std::string& csPath) {
     GLuint cs = compile(GL_COMPUTE_SHADER, read_file(csPath), csPath.c_str());
     GLuint p = glCreateProgram();
@@ -117,7 +117,7 @@ struct Framebuffer {
 
 GLuint load_texture_2d(const std::string& path, bool srgb);
 
-// charge une cubemap depuis 6 images : dir/px,nx,py,ny,pz,nz + extension
+//  cubemap depuis 6 images les png dans les asstes 
 GLuint load_cubemap(const std::string& dir, const std::string& ext, bool srgb);
 
 inline GLuint white_texture() {

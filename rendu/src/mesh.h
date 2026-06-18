@@ -5,7 +5,7 @@
 #include <vector>
 #include "math3d.h"
 
-// materiau issu du fichier MTL
+
 struct Material {
     Vec3   Ka { 0.05f, 0.05f, 0.05f };
     Vec3   Kd { 0.8f,  0.8f,  0.8f  };
@@ -16,7 +16,7 @@ struct Material {
     std::string name;
 };
 
-// plage d'indices partageant le meme materiau
+
 struct SubMesh {
     GLsizei indexStart = 0;
     GLsizei indexCount = 0;
@@ -29,7 +29,7 @@ public:
     bool load(const std::string& objPath, const std::string& assetDir);
     void destroy();
 
-    // dessin indexe (VBO + IBO)
+    
     template <class Fn>
     void draw(Fn&& applyMaterial) const {
         glBindVertexArray(vao_);
