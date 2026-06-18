@@ -85,7 +85,7 @@ struct Framebuffer {
 
         glGenTextures(1, &color);
         glBindTexture(GL_TEXTURE_2D, color);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, nullptr);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -119,8 +119,6 @@ GLuint load_texture_2d(const std::string& path, bool srgb);
 
 // charge une cubemap depuis 6 images : dir/px,nx,py,ny,pz,nz + extension
 GLuint load_cubemap(const std::string& dir, const std::string& ext, bool srgb);
-
-void save_screenshot(const std::string& path, int w, int h);
 
 inline GLuint white_texture() {
     GLuint t;

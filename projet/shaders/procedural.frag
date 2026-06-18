@@ -2,8 +2,6 @@
 in vec2 vUV;
 out vec4 FragColor;
 
-uniform float uTime;
-
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
@@ -20,7 +18,7 @@ float fbm(vec2 p) {
 }
 
 void main() {
-    float n = fbm(vUV * 6.0 + vec2(uTime * 0.08, 0.0));
+    float n = fbm(vUV * 6.0);
     float marble = 0.5 + 0.5 * sin((vUV.x * 8.0 + n * 4.5) * 3.14159265);
     vec3 col = mix(vec3(0.06, 0.20, 0.45), vec3(0.92, 0.96, 1.0), marble);
     FragColor = vec4(col, 1.0);

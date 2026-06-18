@@ -34,8 +34,7 @@ struct SceneObject {
     Mesh*  mesh = nullptr;
     Vec3   position { 0, 0, 0 };
     Vec3   scale { 1, 1, 1 };
-    float  spin = 0.0f;
-    float  phase = 0.0f;
+    float  yaw = 0.0f;          // rotation fixe autour de Y
     GLuint overrideTex = 0;
 };
 
@@ -52,12 +51,9 @@ struct App {
     bool schlick = true;
     bool drawSkybox = true;
     bool drawInstances = true;
-    bool animate = true;
-    float exposure = 1.0f;
     float rimPower = 3.0f;
     int   postMode = 0;
     int   instanceCount = 0;
-    bool  saveShot = false;
 };
 
 static void on_resize(GLFWwindow* w, int width, int height) {
@@ -93,9 +89,7 @@ static void on_key(GLFWwindow* w, int key, int sc, int action, int mods) {
     auto* a = (App*)glfwGetWindowUserPointer(w);
     if (action != GLFW_PRESS) return;
     if (key == GLFW_KEY_ESCAPE) glfwSetWindowShouldClose(w, GLFW_TRUE);
-    if (key == GLFW_KEY_SPACE)  a->animate = !a->animate;
     if (key == GLFW_KEY_R)      a->cam = OrbitCamera{};
-    if (key == GLFW_KEY_P)      a->saveShot = true;
 }
 
 // cube de la skybox
@@ -120,10 +114,6 @@ static const float QUAD_VERTS[] = {
 
 int main(int argc, char** argv) {
     if (!glfwInit()) { std::fprintf(stderr, "glfwInit failed\n"); return 1; }
-
-    bool screenshotMode = false;
-    for (int i = 1; i < argc; ++i)
-        if (std::string(argv[i]) == "--screenshot") screenshotMode = true;
 
     auto setGLHints = [](int major, int minor) {
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, major);
@@ -162,7 +152,6 @@ int main(int argc, char** argv) {
     glfwGetFramebufferSize(win, &app.W, &app.H);
 
     glEnable(GL_DEPTH_TEST);
-    glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 
     fs::path exeDir   = fs::path(argv[0]).parent_path();
     std::string shaderDir = (exeDir / "shaders").string();
@@ -297,12 +286,12 @@ int main(int argc, char** argv) {
 
     // placement des objets (positions / rotations / echelles propres)
     std::vector<SceneObject> scene = {
-        { &mPlane,      { 0.0f,  0.0f,  0.0f }, { 1, 1, 1 }, 0.0f,  0.0f, 0 },
-        { &mSphere,     {-2.6f,  1.0f,  0.0f }, { 1, 1, 1 }, 0.5f,  0.0f, 0 },
-        { &mTorus,      { 2.6f,  1.3f,  0.0f }, { 1, 1, 1 }, 0.8f,  1.0f, 0 },
-        { &mSphereBlue, { 0.0f,  1.0f,  2.8f }, { 0.9f, 0.9f, 0.9f }, -0.6f, 0.0f, 0 },
-        { &mCube,       { 0.0f,  0.7f, -2.8f }, { 1, 1, 1 }, 0.9f,  0.0f, 0 },
-        { &mProcSphere, { 0.0f,  2.6f,  0.0f }, { 0.8f, 0.8f, 0.8f }, 0.7f, 0.0f, procTex },
+        { &mPlane,      { 0.0f,  0.0f,  0.0f }, { 1, 1, 1 },          0.0f, 0 },
+        { &mSphere,     {-2.6f,  1.0f,  0.0f }, { 1, 1, 1 },          0.0f, 0 },
+        { &mTorus,      { 2.6f,  1.3f,  0.0f }, { 1, 1, 1 },          1.0f, 0 },
+        { &mSphereBlue, { 0.0f,  1.0f,  2.8f }, { 0.9f, 0.9f, 0.9f }, 0.0f, 0 },
+        { &mCube,       { 0.0f,  0.7f, -2.8f }, { 1, 1, 1 },          0.6f, 0 },
+        { &mProcSphere, { 0.0f,  2.6f,  0.0f }, { 0.8f, 0.8f, 0.8f }, 0.0f, procTex },
     };
 
     IMGUI_CHECKVERSION();
@@ -315,42 +304,34 @@ int main(int argc, char** argv) {
     glu::Framebuffer scene_fbo;
     scene_fbo.create(app.W, app.H);
 
+    // texture procedurale (statique) : generee une seule fois
+    if (hasCompute) {
+        // compute shader : ecriture directe dans l'image procTex
+        glUseProgram(progProceduralCompute);
+        glBindImageTexture(0, procTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA8);
+        glDispatchCompute(PROC / 16, PROC / 16, 1);
+        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+    } else {
+        // fallback (macOS 4.1) : render-to-texture via un FBO
+        glBindFramebuffer(GL_FRAMEBUFFER, procFbo);
+        glViewport(0, 0, PROC, PROC);
+        glDisable(GL_DEPTH_TEST);
+        glUseProgram(progProcedural);
+        glBindVertexArray(quadVao);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glEnable(GL_DEPTH_TEST);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
     CameraUBO cu{};
     ObjectUBO ou{};
-    double last = glfwGetTime();
-    float  t = 0.0f;
-    int    frameCount = 0;
 
     while (!glfwWindowShouldClose(win)) {
         glfwPollEvents();
-        double now = glfwGetTime();
-        float dt = (float)(now - last); last = now;
-        if (app.animate) t += dt;
 
         scene_fbo.resize(app.W, app.H);
 
-        // 1) generation de la texture procedurale
-        if (hasCompute) {
-            // compute shader : ecriture directe dans l'image procTex
-            glUseProgram(progProceduralCompute);
-            glUniform1f(glGetUniformLocation(progProceduralCompute, "uTime"), t);
-            glBindImageTexture(0, procTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA8);
-            glDispatchCompute(PROC / 16, PROC / 16, 1);
-            glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
-        } else {
-            // fallback (macOS 4.1) : render-to-texture via un FBO
-            glBindFramebuffer(GL_FRAMEBUFFER, procFbo);
-            glViewport(0, 0, PROC, PROC);
-            glDisable(GL_DEPTH_TEST);
-            glUseProgram(progProcedural);
-            glUniform1f(glGetUniformLocation(progProcedural, "uTime"), t);
-            glBindVertexArray(quadVao);
-            glDrawArrays(GL_TRIANGLES, 0, 6);
-            glEnable(GL_DEPTH_TEST);
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        }
-
-        // 2) rendu de la scene dans le FBO
+        // rendu de la scene dans le FBO
         glBindFramebuffer(GL_FRAMEBUFFER, scene_fbo.fbo);
         glViewport(0, 0, app.W, app.H);
         glClearColor(0.02f, 0.02f, 0.03f, 1.0f);
@@ -368,7 +349,7 @@ int main(int argc, char** argv) {
         glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(CameraUBO), &cu);
 
         // lumieres directionnelles (L = direction vers la lumiere) ; la principale tourne
-        Vec3 keyDir  = vec3_norm(Vec3{ std::cos(t * 0.3f), 0.95f, std::sin(t * 0.3f) });
+        Vec3 keyDir  = vec3_norm(Vec3{ 0.4f, 0.95f, 0.5f });
         Vec3 fillDir = vec3_norm(Vec3{ -0.5f, 0.6f, -0.4f });
 
         glUseProgram(progPhong);
@@ -380,14 +361,14 @@ int main(int argc, char** argv) {
         setFloat(progPhong, "uRimPower",   app.rimPower);
         glUniform1i(glGetUniformLocation(progPhong, "uNumLights"), 2);
         setVec3(progPhong, "uLights[0].direction", keyDir);
-        setVec3(progPhong, "uLights[0].color",     Vec3{ 1.50f, 1.48f, 1.40f });
+        setVec3(progPhong, "uLights[0].color",     Vec3{ 0.90f, 0.88f, 0.84f });
         setVec3(progPhong, "uLights[1].direction", fillDir);
-        setVec3(progPhong, "uLights[1].color",     Vec3{ 0.30f, 0.24f, 0.20f });
+        setVec3(progPhong, "uLights[1].color",     Vec3{ 0.22f, 0.17f, 0.14f });
 
         for (const SceneObject& o : scene) {
             if (!o.mesh) continue;
             Mat4 model = mat4_mul(mat4_translation(o.position.x, o.position.y, o.position.z),
-                          mat4_mul(mat4_rotY(o.spin * t + o.phase),
+                          mat4_mul(mat4_rotY(o.yaw),
                                    mat4_scale(o.scale.x, o.scale.y, o.scale.z)));
             Mat4 nrm = mat4_normal_matrix(model);
             std::memcpy(ou.model, model.m, sizeof(model.m));
@@ -421,7 +402,7 @@ int main(int argc, char** argv) {
         if (app.drawInstances) {
             glUseProgram(progInstanced);
             setVec3(progInstanced, "uLightDir",   keyDir);
-            setVec3(progInstanced, "uLightColor", Vec3{ 2.4f, 2.4f, 2.4f });
+            setVec3(progInstanced, "uLightColor", Vec3{ 0.80f, 0.80f, 0.80f });
             setBool(progInstanced, "uUseEnv",     app.envMap);
             mInstance.draw_instanced(app.instanceCount);
         }
@@ -440,20 +421,12 @@ int main(int argc, char** argv) {
         glViewport(0, 0, app.W, app.H);
         glDisable(GL_DEPTH_TEST);
         glUseProgram(progPost);
-        glUniform1f(glGetUniformLocation(progPost, "uExposure"), app.exposure);
         glUniform1i(glGetUniformLocation(progPost, "uPostMode"), app.postMode);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, scene_fbo.color);
         glBindVertexArray(quadVao);
         glDrawArrays(GL_TRIANGLES, 0, 6);
         glEnable(GL_DEPTH_TEST);
-
-        if (app.saveShot || (screenshotMode && frameCount == 90)) {
-            glu::save_screenshot("screenshot.png", app.W, app.H);
-            app.saveShot = false;
-            if (screenshotMode) glfwSetWindowShouldClose(win, GLFW_TRUE);
-        }
-        ++frameCount;
 
         // interface ImGui
         ImGui_ImplOpenGL3_NewFrame();
@@ -462,7 +435,7 @@ int main(int argc, char** argv) {
         ImGui::SetNextWindowSize(ImVec2(320, 0), ImGuiCond_FirstUseEver);
         ImGui::Begin("Projet OpenGL M1");
         ImGui::Text("%.1f FPS  |  OpenGL 4.1 core", ImGui::GetIO().Framerate);
-        ImGui::Text("drag: orbit   wheel: zoom   space: pause   R: reset");
+        ImGui::Text("drag: orbit   wheel: zoom   R: reset");
         ImGui::SeparatorText("Illumination");
         ImGui::Checkbox("Blinn-Phong (sinon Phong)", &app.blinn);
         ImGui::Checkbox("Fresnel de Schlick", &app.schlick);
@@ -474,9 +447,7 @@ int main(int argc, char** argv) {
         ImGui::Checkbox("Skybox cubemap", &app.drawSkybox);
         ImGui::Checkbox("Instancing", &app.drawInstances);
         ImGui::Text("instances: %d", app.instanceCount);
-        ImGui::Checkbox("Animer", &app.animate);
         ImGui::SeparatorText("Post-traitement");
-        ImGui::SliderFloat("Exposure", &app.exposure, 0.1f, 4.0f);
         ImGui::Combo("Effet", &app.postMode, "Aucun\0Noir et blanc\0Sepia\0");
         ImGui::End();
         ImGui::Render();
