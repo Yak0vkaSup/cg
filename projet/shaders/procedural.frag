@@ -1,0 +1,27 @@
+#version 410 core
+in vec2 vUV;
+out vec4 FragColor;
+
+uniform float uTime;
+
+float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+float noise(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i),             hash(i + vec2(1, 0)), u.x),
+               mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
+}
+float fbm(vec2 p) {
+    float a = 0.5, s = 0.0;
+    for (int i = 0; i < 5; ++i) { s += a * noise(p); p *= 2.0; a *= 0.5; }
+    return s;
+}
+
+void main() {
+    float n = fbm(vUV * 6.0 + vec2(uTime * 0.08, 0.0));
+    float marble = 0.5 + 0.5 * sin((vUV.x * 8.0 + n * 4.5) * 3.14159265);
+    vec3 col = mix(vec3(0.06, 0.20, 0.45), vec3(0.92, 0.96, 1.0), marble);
+    FragColor = vec4(col, 1.0);
+}

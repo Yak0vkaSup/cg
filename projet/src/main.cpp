@@ -115,7 +115,7 @@ int main(int argc, char** argv) {
     if (!glfwInit()) { std::fprintf(stderr, "glfwInit failed\n"); return 1; }
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
     glfwWindowHint(GLFW_SAMPLES, 4);
@@ -126,7 +126,7 @@ int main(int argc, char** argv) {
 
     App app;
     GLFWwindow* win = glfwCreateWindow(app.W, app.H, "Projet OpenGL M1 - Scene 3D", nullptr, nullptr);
-    if (!win) { std::fprintf(stderr, "CreateWindow failed (need OpenGL 4.3)\n"); glfwTerminate(); return 1; }
+    if (!win) { std::fprintf(stderr, "CreateWindow failed (need OpenGL 4.1)\n"); glfwTerminate(); return 1; }
     glfwSetWindowUserPointer(win, &app);
     glfwMakeContextCurrent(win);
     glfwSwapInterval(1);
@@ -156,7 +156,16 @@ int main(int argc, char** argv) {
     GLuint progSkybox    = glu::program_vf(sp("skybox.vert"),    sp("skybox.frag"));
     GLuint progPost      = glu::program_vf(sp("post.vert"),      sp("post.frag"));
     GLuint progInstanced = glu::program_vf(sp("instanced.vert"), sp("instanced.frag"));
-    GLuint progCompute   = glu::program_compute(sp("procedural.comp"));
+    GLuint progProcedural = glu::program_vf(sp("post.vert"), sp("procedural.frag"));
+
+    auto bindBlock = [](GLuint prog, const char* name, GLuint binding) {
+        GLuint idx = glGetUniformBlockIndex(prog, name);
+        if (idx != GL_INVALID_INDEX) glUniformBlockBinding(prog, idx, binding);
+    };
+    bindBlock(progPhong,     "Camera", 0);
+    bindBlock(progPhong,     "Object", 1);
+    bindBlock(progSkybox,    "Camera", 0);
+    bindBlock(progInstanced, "Camera", 0);
 
     glUseProgram(progPhong);
     glUniform1i(glGetUniformLocation(progPhong, "uDiffuseTex"), 0);
@@ -203,6 +212,12 @@ int main(int argc, char** argv) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    GLuint procFbo;
+    glGenFramebuffers(1, &procFbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, procFbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, procTex, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     Mesh mPlane, mSphere, mTorus, mCube, mSphereBlue, mProcSphere, mInstance;
     mPlane.load     ((fs::path(assetDir) / "plane.obj").string(),       assetDir);
@@ -253,7 +268,7 @@ int main(int argc, char** argv) {
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
     ImGui_ImplGlfw_InitForOpenGL(win, true);
-    ImGui_ImplOpenGL3_Init("#version 430");
+    ImGui_ImplOpenGL3_Init("#version 150");
 
     glu::Framebuffer scene_fbo;
     scene_fbo.create(app.W, app.H);
@@ -272,11 +287,15 @@ int main(int argc, char** argv) {
 
         scene_fbo.resize(app.W, app.H);
 
-        glUseProgram(progCompute);
-        glUniform1f(glGetUniformLocation(progCompute, "uTime"), t);
-        glBindImageTexture(0, procTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA8);
-        glDispatchCompute(PROC / 16, PROC / 16, 1);
-        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+        glBindFramebuffer(GL_FRAMEBUFFER, procFbo);
+        glViewport(0, 0, PROC, PROC);
+        glDisable(GL_DEPTH_TEST);
+        glUseProgram(progProcedural);
+        glUniform1f(glGetUniformLocation(progProcedural, "uTime"), t);
+        glBindVertexArray(emptyVao);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glEnable(GL_DEPTH_TEST);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         glBindFramebuffer(GL_FRAMEBUFFER, scene_fbo.fbo);
         glViewport(0, 0, app.W, app.H);
@@ -362,7 +381,7 @@ int main(int argc, char** argv) {
         ImGui::NewFrame();
         ImGui::SetNextWindowSize(ImVec2(320, 0), ImGuiCond_FirstUseEver);
         ImGui::Begin("Projet OpenGL M1");
-        ImGui::Text("%.1f FPS  |  OpenGL 4.3 core", ImGui::GetIO().Framerate);
+        ImGui::Text("%.1f FPS  |  OpenGL 4.1 core", ImGui::GetIO().Framerate);
         ImGui::Text("drag: orbit   wheel: zoom   space: pause   R: reset");
         ImGui::SeparatorText("Illumination");
         ImGui::Checkbox("Blinn-Phong (sinon Phong)", &app.blinn);

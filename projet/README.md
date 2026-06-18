@@ -1,25 +1,27 @@
 # Projet OpenGL M1 — Scène 3D & navigation
 
-Application OpenGL 4.3 core (GLFW + glad) qui affiche une scène 3D composée de
+Application OpenGL 4.1 core (GLFW + glad) qui affiche une scène 3D composée de
 plusieurs objets et permet d'y naviguer avec une caméra orbitale.
+**Multi-plateforme : Windows, Linux et macOS** (macOS plafonne OpenGL à 4.1).
 
 ![rendu](docs/screenshot.png)
 
 ## Compilation
 
-Dépendances récupérées automatiquement par CMake (`FetchContent`) : **GLFW 3.4**,
-**glad 2.0.6** (gl core 4.3), **Dear ImGui 1.91.5**. Les bibliothèques
-mono-header **stb_image / stb_image_write** et **TinyOBJLoader** sont fournies
-dans `src/`.
+**GLFW 3.4** et **Dear ImGui 1.91.5** sont récupérés automatiquement par CMake
+(`FetchContent`). Le loader **glad** (gl core 4.1) est *fourni pré-généré* dans
+`external/glad/` — **aucun Python ni `jinja2` n'est requis** pour compiler. Les
+bibliothèques mono-header **stb_image / stb_image_write** et **TinyOBJLoader**
+sont dans `src/`.
 
 ```sh
 cmake -S . -B build
 cmake --build build --config Release
 ```
 
-L'exécutable est généré dans `build/Release/projet.exe` (les dossiers `shaders/`
-et `assets/` sont copiés à côté automatiquement). Il faut **OpenGL 4.3** (pour le
-compute shader de la partie 3.d et les `layout(binding=…)` des UBO).
+L'exécutable est généré dans `build/Release/projet.exe` (Windows) ou
+`build/projet` (Linux/macOS) ; les dossiers `shaders/` et `assets/` sont copiés à
+côté automatiquement. Il faut une carte/pilote supportant **OpenGL 4.1**.
 
 ### Génération des assets
 
@@ -63,13 +65,16 @@ post-traitement en direct. Lancer avec `--screenshot` rend ~90 images puis écri
   (`SceneObject`, `main.cpp`).
 - **2.b** — **UBO `Camera`** (binding 0 : view + projection + position) partagé
   par tous les shaders, **UBO `Object`** (binding 1 : world matrix, normal
-  matrix, matériau). Caméra **orbitale** type arcball (`camera.h`).
+  matrix, matériau) ; les points de binding sont fixés via `glUniformBlockBinding`
+  (compatible 4.1). Caméra **orbitale** type arcball (`camera.h`).
 
 ### Partie 3 — Options (toutes implémentées)
 - **3.a** Post-traitement (tone mapping, vignette, N&B / négatif / sépia) — `post.frag`
 - **3.b** **Instancing** matériel (anneau de cubes, `glDrawArraysInstanced`) — `instanced.*`
 - **3.c** **Skybox** cubemap — `skybox.*` (cubemap ciel procédurale)
-- **3.d** **Compute shader** générant une texture procédurale (marbre/fbm) — `procedural.comp`
+- **3.d** **Texture procédurale** (marbre/fbm) générée sur GPU par *render-to-texture*
+  (FBO + `procedural.frag`). NB : la version *compute shader* (OpenGL 4.3) a été
+  remplacée par cette variante fragment pour rester compatible macOS (OpenGL 4.1).
 - **3.e** Interface **ImGui**
 - **3.f** Effet **Fresnel / back-light (rim)** — `phong.frag`
 - **3.g** **Fresnel de Schlick** pour équilibrer diffus / spéculaire — `phong.frag`
@@ -87,7 +92,8 @@ projet/
 │  ├─ gl_utils.h        shaders, FBO, textures, cubemap procédurale
 │  ├─ image_io.cpp      stb_image / stb_image_write (textures, screenshot)
 │  ├─ tiny_obj_loader.h, stb_image.h, stb_image_write.h  (vendored)
-├─ shaders/             phong, skybox, post, instanced, procedural (compute)
+├─ external/glad/       loader glad pré-généré (gl core 4.1, pas de Python)
+├─ shaders/             phong, skybox, post, instanced, procedural (fragment)
 ├─ assets/              .obj / .mtl / .png générés
 └─ tools/gen_assets.py  générateur d'assets
 ```

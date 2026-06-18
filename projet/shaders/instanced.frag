@@ -1,10 +1,10 @@
-#version 430 core
+#version 410 core
 in vec3 vWorldPos;
 in vec3 vNormal;
 in vec3 vColor;
 out vec4 FragColor;
 
-layout(std140, binding = 0) uniform Camera {
+layout(std140) uniform Camera {
     mat4 uView;
     mat4 uProj;
     vec4 uCamPos;

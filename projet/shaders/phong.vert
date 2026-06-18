@@ -1,9 +1,9 @@
-#version 430 core
+#version 410 core
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aUV;
 
-layout(std140, binding = 0) uniform Camera {
+layout(std140) uniform Camera {
     mat4 uView;
     mat4 uProj;
     vec4 uCamPos;
@@ -11,7 +11,7 @@ layout(std140, binding = 0) uniform Camera {
     vec4 uOptions2;
 };
 
-layout(std140, binding = 1) uniform Object {
+layout(std140) uniform Object {
     mat4 uModel;
     mat4 uNormalMat;
     vec4 uKa;
